@@ -339,3 +339,9 @@ interface FloodAnalysisResult {
 6. **`risk_factors` JSONB** — always serialize/deserialize carefully; MapLibre may return it as a string.
 7. **`ST_AsGeoJSON(geom)`** — returns a TEXT string from PostgreSQL, not a JSON object. Always call `JSON.parse()` on it in the route handler before sending the response.
 8. **Connection pooling** — always use `query()` from `lib/db.ts`, never create raw `Pool` or `Client` instances directly.
+
+
+to simulate rain -
+    http://localhost:3000/api/cron/sync-weather?rain=0 
+    
+        
