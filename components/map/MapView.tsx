@@ -6,6 +6,8 @@ import type { MapMouseEvent, MapLayerMouseEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import RiskLegend from './RiskLegend';
 import RoadDetailDrawer from './RoadDetailDrawer';
+import ReportModal from '../reports/ReportModal';
+import { Plus } from 'lucide-react';
 
 // Fix for Next.js: maplibre-gl v4+ uses ES Modules (sealed objects) — property mutation won't work.
 // setWorkerUrl() is the official API to point to the pre-built worker served as a static file.
@@ -19,6 +21,7 @@ export default function MapView() {
   
   // State to track which road was clicked
   const [selectedRoad, setSelectedRoad] = useState<any | null>(null);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   useEffect(() => {
     if (map.current || !mapContainer.current) return;
@@ -113,11 +116,29 @@ export default function MapView() {
     <div className="relative w-full h-screen overflow-hidden">
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
       
+      {/* Floating Action: Report Flood */}
+      <div className="absolute top-6 right-6 z-10">
+        <button
+          onClick={() => setIsReportModalOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-gray-50 text-gray-900 font-semibold text-xs sm:text-sm shadow-md hover:shadow-lg border border-gray-200 transition-all duration-150 active:scale-98 cursor-pointer"
+        >
+          <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center">
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+          </div>
+          <span>Report Flood</span>
+        </button>
+      </div>
+
       <RiskLegend />
 
       <RoadDetailDrawer 
         road={selectedRoad} 
         onClose={() => setSelectedRoad(null)} 
+      />
+
+      <ReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
       />
     </div>
   );

@@ -1,7 +1,7 @@
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-const s3Client = new S3Client({
+export const s3Client = new S3Client({
     region: process.env.AWS_REGION || 'ap-south-1',
     credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
@@ -9,17 +9,44 @@ const s3Client = new S3Client({
     },
 });
 
-// Used by the frontend to upload the image directly to AWS
-export async function getPresignedUploadUrl(mimeType: string): Promise<{ uploadUrl: string, key: string }> {
-    const key = `reports/flood-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+/**
+ * Generates a 15-minute presigned PUT URL for direct client-side S3 upload.
+ * Object key format: reports/{timestamp}-{filename}
+ */
+export async function createPresignedUploadUrl(
+    filename: string,
+    contentType: string
+): Promise<{ uploadUrl: string; fileKey: string }> {
+    const cleanFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileKey = `reports/${Date.now()}-${cleanFilename}`;
+
     const command = new PutObjectCommand({
         Bucket: process.env.S3_BUCKET_NAME,
-        Key: key,
-        ContentType: mimeType,
+        Key: fileKey,
+        ContentType: contentType,
     });
 
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 }); // 5 minutes to upload
-    return { uploadUrl, key };
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
+
+    return { uploadUrl, fileKey };
+}
+
+/**
+ * Downloads a file from S3 and returns it as a Node.js Buffer
+ */
+export async function getFileBufferFromS3(fileKey: string): Promise<Buffer> {
+    const command = new GetObjectCommand({
+        Bucket: process.env.S3_BUCKET_NAME,
+        Key: fileKey,
+    });
+
+    const response = await s3Client.send(command);
+    if (!response.Body) {
+        throw new Error(`Empty body received from S3 for key: ${fileKey}`);
+    }
+
+    const byteArray = await response.Body.transformToByteArray();
+    return Buffer.from(byteArray);
 }
 
 // Used to display the image on the map
@@ -28,17 +55,23 @@ export async function getPresignedImageUrl(imageKey: string): Promise<string> {
         Bucket: process.env.S3_BUCKET_NAME,
         Key: imageKey,
     });
+
     return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 }
 
-// Used by the backend to fetch the image into memory for Bedrock AI analysis
-export async function getFileBufferFromS3(imageKey: string): Promise<Buffer> {
-    const command = new GetObjectCommand({
+/**
+ * Uploads a raw file buffer to Amazon S3 (fallback / direct helper)
+ */
+export async function uploadImageToS3(fileBuffer: Buffer, mimeType: string): Promise<string> {
+    const fileName = `reports/${Date.now()}-flood-${Math.random().toString(36).substring(7)}.jpg`;
+
+    const command = new PutObjectCommand({
         Bucket: process.env.S3_BUCKET_NAME,
-        Key: imageKey,
+        Key: fileName,
+        Body: fileBuffer,
+        ContentType: mimeType,
     });
-    const response = await s3Client.send(command);
-    const byteArray = await response.Body?.transformToByteArray();
-    if (!byteArray) throw new Error("Failed to read image from S3");
-    return Buffer.from(byteArray);
+
+    await s3Client.send(command);
+    return fileName;
 }
