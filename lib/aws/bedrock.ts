@@ -1,73 +1,66 @@
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 
-export const bedrockClient = new BedrockRuntimeClient({
-    region: process.env.AWS_REGION || 'us-east-1',
+const bedrockClient = new BedrockRuntimeClient({
+    region: process.env.AWS_REGION || 'ap-south-1',
     credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
     },
 });
 
-export interface FloodAnalysisResult {
-    is_flooded: boolean;
-    severity: 'LOW' | 'MODERATE' | 'HIGH' | 'SEVERE';
-    estimated_depth_cm: number;
-    visual_markers: string[];
-    confidence: number;
-}
-
-export async function analyzeFloodImage(
-    imageBuffer: Buffer,
-    mimeType: string
-): Promise<FloodAnalysisResult> {
+export async function analyzeFloodImage(imageBuffer: Buffer, mimeType: string) {
     const base64Image = imageBuffer.toString('base64');
 
-    const systemPrompt = `You are a municipal urban flood assessment AI. Analyze the image and determine whether waterlogging or urban flooding is present. Return ONLY a single raw JSON object matching this TypeScript interface without markdown wrappers or conversational filler:
+    // Strict prompt engineering to prevent Claude from adding conversational markdown
+    const prompt = `You are an emergency flood analysis AI. Analyze this street image.
+Output STRICTLY a raw JSON object with no markdown formatting, no backticks, and no introductory text. 
+Use this exact schema:
 {
   "is_flooded": boolean,
   "severity": "LOW" | "MODERATE" | "HIGH" | "SEVERE",
   "estimated_depth_cm": number,
-  "visual_markers": string[],
-  "confidence": number
+  "visual_markers": ["array", "of", "strings"],
+  "confidence": number (between 0.0 and 1.0)
 }`;
 
     const payload = {
-        anthropic_version: 'bedrock-2023-05-31',
+        anthropic_version: "bedrock-2023-05-31",
         max_tokens: 1000,
-        temperature: 0.1,
         messages: [
             {
-                role: 'user',
+                role: "user",
                 content: [
                     {
-                        type: 'image',
+                        type: "image",
                         source: {
-                            type: 'base64',
+                            type: "base64",
                             media_type: mimeType,
                             data: base64Image,
                         },
                     },
-                    {
-                        type: 'text',
-                        text: systemPrompt,
-                    },
-                ],
-            },
-        ],
+                    { type: "text", text: prompt }
+                ]
+            }
+        ]
     };
 
     const command = new InvokeModelCommand({
+        // Uses the model ID from your .env file
         modelId: process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20240620-v1:0',
-        contentType: 'application/json',
-        accept: 'application/json',
+        contentType: "application/json",
+        accept: "application/json",
         body: JSON.stringify(payload),
     });
 
-    const response = await bedrockClient.send(command);
-    const responseData = JSON.parse(new TextDecoder().decode(response.body));
-    const rawText = responseData.content?.[0]?.text?.trim() || '{}';
+    try {
+        const response = await bedrockClient.send(command);
+        const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+        const textOutput = responseBody.content[0].text.trim();
 
-    // Strip possible markdown fences if returned
-    const sanitizedJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(sanitizedJson) as FloodAnalysisResult;
+        // Parse and return the strict JSON output
+        return JSON.parse(textOutput);
+    } catch (error) {
+        console.error("Bedrock AI Error:", error);
+        throw new Error("Failed to process image via Bedrock AI");
+    }
 }
