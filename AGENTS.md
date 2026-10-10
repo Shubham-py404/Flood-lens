@@ -205,6 +205,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | `s3Client` | `S3Client` | Singleton AWS S3 client |
 | `createPresignedUploadUrl` | `(filename: string, contentType: string) => Promise<{ uploadUrl: string; fileKey: string }>` | Generates a 15-min presigned PUT URL. Key format: `reports/{timestamp}-{filename}` |
 | `getFileBufferFromS3` | `(fileKey: string) => Promise<Buffer>` | Downloads a file from S3 and returns it as a Node.js Buffer |
+| `getPresignedImageUrl` | `(imageKey: string) => Promise<string>` | Generates a temporary viewing URL for the frontend (1 hour expiry) |
+| `uploadImageToS3` | `(fileBuffer: Buffer, mimeType: string) => Promise<string>` | Uploads a raw file buffer to Amazon S3 (fallback / direct helper) |
 
 ### `lib/aws/bedrock.ts`
 | Symbol | Signature | Purpose |
@@ -257,6 +259,14 @@ interface FloodAnalysisResult {
 }
 ```
 
+### `types/api.ts`
+```ts
+interface PresignedUrlRequest { filename: string; contentType: string; }
+interface PresignedUrlResponse { uploadUrl: string; fileKey: string; }
+interface SubmitReportRequest { latitude: number; longitude: number; s3_image_key?: string; voice_transcript?: string; depth_estimate?: string; description?: string; user_id?: string; }
+interface SubmitReportResponse { success: boolean; report_id: string; road_segment_id: string | null; status: ReportStatus; message: string; }
+```
+
 ---
 
 ## 6. API Routes (Implemented)
@@ -264,12 +274,12 @@ interface FloodAnalysisResult {
 | Method | Route | File | Description |
 |---|---|---|---|
 | `GET` | `/api/risk/area?bbox=minLng,minLat,maxLng,maxLat` | `app/api/risk/area/route.ts` | Returns GeoJSON FeatureCollection of `road_segments` intersecting bbox using `ST_MakeEnvelope`. `ST_AsGeoJSON(geom)` is returned as a string and parsed via `JSON.parse()` in the route handler. |
+| `POST` | `/api/reports/presigned-url` | `app/api/reports/presigned-url/route.ts` | Returns AWS S3 presigned PUT URL (`PresignedUrlResponse`) |
+| `POST` | `/api/reports/submit` | `app/api/reports/submit/route.ts` | Receives `SubmitReportRequest`, saves report to RDS, dynamically attaches to nearest road, and triggers Bedrock pipeline |
 
 ### API Routes (Planned — not yet implemented)
 | Method | Route | Description |
 |---|---|---|
-| `POST` | `/api/reports/presigned-url` | Returns AWS S3 presigned PUT URL |
-| `POST` | `/api/reports/submit` | Saves report to RDS, triggers Bedrock pipeline |
 | `POST` | `/api/cron/sync-weather` | Fetches Open-Meteo data, recalculates risk scores |
 
 ---
@@ -296,6 +306,21 @@ interface FloodAnalysisResult {
 - **Helper:** `getRiskColor(level: string)` — returns Tailwind class string per risk level
 - **Reads from `road`:** `road_name`, `current_risk_level`, `current_risk_score`, `risk_factors.rainfall_pct`, `risk_factors.elevation_pct`, `risk_factors.historical_pct`, `risk_factors.summary`
 - **Note:** `risk_factors` is safely parsed from string (MapLibre serializes JSON properties as strings)
+
+### `components/reports/ReportModal.tsx`
+- **Type:** `'use client'` — reporting dialog overlay
+- **Props:** `isOpen: boolean`, `onClose: () => void`, `onReportSubmitted?: (data: SubmitReportResponse) => void`
+- **Features:** Fetches geolocation upon open, manages Dictation, Photo Upload, and submission state.
+
+### `components/reports/PhotoUploader.tsx`
+- **Type:** `'use client'`
+- **Props:** `onUploadSuccess: (key: string) => void`, `onUploadClear: () => void`, `disabled?: boolean`
+- **Features:** Client-side file selection, contacts `/api/reports/presigned-url`, uploads directly to S3 bucket.
+
+### `components/reports/VoiceReporter.tsx`
+- **Type:** `'use client'`
+- **Props:** `onTranscriptChange: (t: string) => void`, `onDepthExtracted: (d: string) => void`, `disabled?: boolean`
+- **Features:** Uses Web Speech API (`webkitSpeechRecognition`) for hands-free dictated reporting.
 
 ---
 

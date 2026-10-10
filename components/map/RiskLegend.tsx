@@ -9,7 +9,7 @@ export default function RiskLegend() {
   ];
 
   return (
-    <div className="absolute bottom-6 right-6 bg-white/90 backdrop-blur-md p-4 rounded-xl shadow-lg border border-gray-200 z-10 w-48">
+    <div className="absolute bottom-20 right-6 bg-white/90 backdrop-blur-md p-4 rounded-xl shadow-lg border border-gray-200 z-10 w-48">
       <h3 className="text-sm font-semibold text-gray-800 mb-3">Live Risk Level</h3>
       <div className="flex flex-col gap-2">
         {levels.map((lvl) => (
