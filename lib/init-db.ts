@@ -114,8 +114,9 @@ export async function initializeDatabase() {
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_saved_locations_user_id ON saved_locations (user_id); --[cite: 10]
-    CREATE INDEX IF NOT EXISTS idx_saved_locations_road_segment ON saved_locations (nearest_road_segment_id); --[cite: 10]
+    CREATE INDEX IF NOT EXISTS idx_saved_locations_user_id ON saved_locations (user_id);
+    CREATE INDEX IF NOT EXISTS idx_saved_locations_road_segment ON saved_locations (nearest_road_segment_id);
+    CREATE INDEX IF NOT EXISTS idx_saved_locations_geom ON saved_locations USING GIST (geom);
 
     -- Dependent Table 5: user_alerts
     CREATE TABLE IF NOT EXISTS user_alerts (

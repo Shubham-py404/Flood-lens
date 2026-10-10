@@ -15,7 +15,7 @@ export interface RoadFeatureProperties {
     road_name: string;
     current_risk_score: number;
     current_risk_level: RiskLevel;
-    risk_factors: Record<string, any>;
+    risk_factors: Record<string, unknown>;
 }
 
 export interface RoadFeatureCollection {

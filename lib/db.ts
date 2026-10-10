@@ -1,7 +1,6 @@
 import { Pool, QueryResult, QueryResultRow } from 'pg';
 
 declare global {
-    // eslint-disable-next-line no-var
     var globalPgPool: Pool | undefined;
 }
 
@@ -22,9 +21,9 @@ if (process.env.NODE_ENV !== 'production') {
     global.globalPgPool = pool;
 }
 
-export async function query<T extends QueryResultRow = any>(
+export async function query<T extends QueryResultRow = QueryResultRow>(
     text: string,
-    params?: any[]
+    params?: unknown[]
 ): Promise<QueryResult<T>> {
     const start = Date.now();
     const res = await pool.query<T>(text, params);

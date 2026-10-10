@@ -38,3 +38,41 @@ export interface CitizenReport {
     status: ReportStatus;
     created_at: string;
 }
+
+export interface SavedLocation {
+    id: string;
+    user_id: string;
+    label: string;
+    latitude: number;
+    longitude: number;
+    nearest_road_segment_id?: string | null;
+    nearest_road_name?: string | null;
+    nearest_road_risk_level?: RiskLevel | null;
+    nearest_road_risk_score?: number | null;
+    alert_on_risk_level: RiskLevel;
+    is_active: boolean;
+    created_at: string;
+}
+
+export interface CreateSavedLocationInput {
+    label: string;
+    latitude: number;
+    longitude: number;
+    alert_on_risk_level?: RiskLevel;
+}
+
+export interface UserAlert {
+    id: string;
+    user_id: string;
+    saved_location_id: string;
+    saved_location_label?: string;
+    road_segment_id: string;
+    road_name?: string;
+    previous_risk_level: RiskLevel;
+    escalated_risk_level: RiskLevel;
+    message: string;
+    is_read: boolean;
+    created_at: string;
+    latitude?: number;
+    longitude?: number;
+}

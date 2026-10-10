@@ -1,12 +1,13 @@
-import React from 'react';
-import { X, Droplets, Mountain, History, AlertTriangle } from 'lucide-react';
+import { X, Droplets, Mountain, History, AlertTriangle, MapPin } from 'lucide-react';
+import { RoadFeatureProperties } from '@/types/geojson';
 
 interface RoadDetailDrawerProps {
-  road: any | null;
+  road: RoadFeatureProperties | null;
   onClose: () => void;
+  onSaveAsPlace?: (road: RoadFeatureProperties) => void;
 }
 
-export default function RoadDetailDrawer({ road, onClose }: RoadDetailDrawerProps) {
+export default function RoadDetailDrawer({ road, onClose, onSaveAsPlace }: RoadDetailDrawerProps) {
   if (!road) return null;
 
   // MapLibre parses JSON properties as strings sometimes, so we safely parse it
@@ -76,6 +77,20 @@ export default function RoadDetailDrawer({ road, onClose }: RoadDetailDrawerProp
           </div>
         </div>
       </div>
+
+      {/* Footer Actions */}
+      {onSaveAsPlace && (
+        <div className="p-4 border-t border-gray-100 bg-gray-50/50">
+          <button
+            type="button"
+            onClick={() => onSaveAsPlace(road)}
+            className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-blue-500/20"
+          >
+            <MapPin className="w-3.5 h-3.5" />
+            Save Road as Monitored Place
+          </button>
+        </div>
+      )}
     </div>
   );
 }
