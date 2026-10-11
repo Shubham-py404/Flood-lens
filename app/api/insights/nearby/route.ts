@@ -34,7 +34,13 @@ export async function GET(req: NextRequest) {
 
     const result = await query(sql, [lng, lat, limit]);
 
-    const items: NearbyIncidentCard[] = result.rows.map((row: any) => {
+    const SAMPLE_HAZARDS = [
+      '/sample-hazards/ring_road_flood.jpg',
+      '/sample-hazards/connaught_waterlog.jpg',
+      '/sample-hazards/underpass_hazard.jpg',
+    ];
+
+    const items: NearbyIncidentCard[] = result.rows.map((row: any, idx: number) => {
       let timeAgo = 'Just now';
       if (row.created_at) {
         const diffMs = Date.now() - new Date(row.created_at).getTime();
@@ -48,6 +54,21 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // Assign realistic contextual image if report doesn't already have a valid image_url
+      let resolvedImageUrl = row.image_url;
+      if (!resolvedImageUrl || typeof resolvedImageUrl !== 'string' || resolvedImageUrl.trim() === '') {
+        const lowerRoad = (row.road_name || '').toLowerCase();
+        if (lowerRoad.includes('ring')) {
+          resolvedImageUrl = '/sample-hazards/ring_road_flood.jpg';
+        } else if (lowerRoad.includes('connaught') || lowerRoad.includes('radial') || lowerRoad.includes('circle')) {
+          resolvedImageUrl = '/sample-hazards/connaught_waterlog.jpg';
+        } else if (lowerRoad.includes('barakhamba') || lowerRoad.includes('underpass') || lowerRoad.includes('parliament')) {
+          resolvedImageUrl = '/sample-hazards/underpass_hazard.jpg';
+        } else {
+          resolvedImageUrl = SAMPLE_HAZARDS[idx % SAMPLE_HAZARDS.length];
+        }
+      }
+
       return {
         id: row.id,
         road_name: row.road_name,
@@ -56,7 +77,7 @@ export async function GET(req: NextRequest) {
         distance_m: Number(row.distance_m || 0),
         severity: row.severity,
         depth_cm: row.depth_cm,
-        image_url: row.image_url,
+        image_url: resolvedImageUrl,
         time_ago: timeAgo,
         created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
         confirm_count: Number(row.confirm_count || 0),

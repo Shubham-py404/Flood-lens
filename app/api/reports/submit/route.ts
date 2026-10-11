@@ -19,13 +19,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Valid latitude and longitude coordinates are required' }, { status: 400 });
     }
 
+    const rawImageUrl = body.image_url || rawBody.imageUrl || null;
     let aiAnalysis: any = null;
     const bucketName = process.env.S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME || 'floodlens-incident-media';
     const region = process.env.AWS_REGION || 'us-east-1';
-    const imageUrl = s3Key ? `https://${bucketName}.s3.${region}.amazonaws.com/${s3Key}` : null;
+    const imageUrl = rawImageUrl || (s3Key ? `https://${bucketName}.s3.${region}.amazonaws.com/${s3Key}` : null);
 
     // 2. AWAITED Bedrock AI Execution (Prevents Serverless Premature Termination)
-    if (s3Key) {
+    if (s3Key && !rawImageUrl) {
       console.log(`Processing image ${s3Key} synchronously through AWS Bedrock...`);
       try {
         const imageBuffer = await getFileBufferFromS3(s3Key);

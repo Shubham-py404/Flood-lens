@@ -40,6 +40,11 @@ export interface AirQualityData {
   observed_at: string;
   is_stale: boolean;
   advice: string;
+  location_name?: string;
+  indian_aqi?: number;
+  indian_category?: string;
+  indian_category_color?: string;
+  guidance?: { icon: 'mask' | 'window' | 'outdoor' | 'check'; text: string }[];
 }
 
 export interface EnvironmentSummary {

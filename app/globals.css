@@ -1,12 +1,22 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fbfbf9;
+  --foreground: #1c2621;
+  --earth-sand: #f4f3ef;
+  --earth-moss: #244837;
+  --earth-pine: #1b382b;
+  --earth-clay: #b8623b;
+  --earth-slate: #5a6b62;
+  --earth-leaf: #3a7d5c;
+  --earth-mist: rgba(244, 243, 239, 0.85);
+  --glass-surface: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(226, 232, 225, 0.82);
+  --glass-highlight: rgba(255, 255, 255, 0.95);
 }
 
 @keyframes flyIn {
-  0% { transform: translateY(-20px); opacity: 0; }
+  0% { transform: translateY(-16px); opacity: 0; }
   100% { transform: translateY(0); opacity: 1; }
 }
 
@@ -19,33 +29,115 @@
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Hide scrollbar for Chrome, Safari and Opera */
+/* Authentic Environmental Glassmorphism System */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.84);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(226, 232, 225, 0.85);
+  box-shadow: 
+    0 1px 3px 0 rgba(28, 38, 33, 0.03), 
+    0 6px 24px -4px rgba(28, 38, 33, 0.05),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.95);
+}
+
+.glass-panel-subtle {
+  background: rgba(251, 251, 249, 0.86);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 225, 0.75);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(16px) saturate(170%);
+  -webkit-backdrop-filter: blur(16px) saturate(170%);
+  border: 1px solid rgba(226, 232, 225, 0.85);
+  box-shadow: 
+    0 1px 2px 0 rgba(28, 38, 33, 0.03),
+    0 4px 16px -2px rgba(28, 38, 33, 0.04),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.95);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(180, 202, 190, 0.95);
+  box-shadow: 
+    0 8px 24px -4px rgba(36, 72, 55, 0.08), 
+    0 2px 6px -1px rgba(28, 38, 33, 0.04),
+    inset 0 1px 0 0 rgba(255, 255, 255, 1);
+  transform: translateY(-1px);
+}
+
+.glass-dock {
+  background: rgba(247, 246, 242, 0.88);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid rgba(226, 232, 225, 0.9);
+  box-shadow: 
+    0 8px 32px -4px rgba(28, 38, 33, 0.08),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.95);
+}
+
+.glass-button {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 225, 0.9);
+  box-shadow: 
+    0 2px 8px -1px rgba(28, 38, 33, 0.05),
+    inset 0 1px 0 0 rgba(255, 255, 255, 1);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-button:hover {
+  background: #ffffff;
+  border-color: rgba(180, 202, 190, 0.95);
+  box-shadow: 
+    0 6px 16px -2px rgba(36, 72, 55, 0.1),
+    inset 0 1px 0 0 rgba(255, 255, 255, 1);
+}
+
+.glass-button:active {
+  transform: scale(0.97);
+}
+
+/* Subtle organic card */
+.eco-card {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(226, 232, 225, 0.85);
+  box-shadow: 0 1px 3px 0 rgba(28, 38, 33, 0.04), 0 1px 2px -1px rgba(28, 38, 33, 0.03);
+  transition: all 0.2s ease;
+}
+
+.eco-card:hover {
+  border-color: rgba(180, 202, 190, 0.9);
+  box-shadow: 0 4px 16px -2px rgba(28, 38, 33, 0.06), 0 2px 4px -2px rgba(28, 38, 33, 0.04);
+}
+
+/* Hide scrollbar for clean device feel */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 
-/* Hide scrollbar for IE, Edge and Firefox */
 .no-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #fbfbf9;
+  color: #1c2621;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }

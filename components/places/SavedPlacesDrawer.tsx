@@ -48,6 +48,7 @@ export default function SavedPlacesDrawer({
 }: SavedPlacesDrawerProps) {
   const [activeTab, setActiveTab] = useState<'places' | 'alerts'>('places');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [placeToDelete, setPlaceToDelete] = useState<SavedLocation | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
 
   if (!isOpen) return null;
@@ -62,14 +63,19 @@ export default function SavedPlacesDrawer({
     return MapPin;
   };
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  const promptDelete = (place: SavedLocation, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to remove this saved place?')) return;
+    setPlaceToDelete(place);
+  };
+
+  const confirmDelete = async () => {
+    if (!placeToDelete) return;
     try {
-      setDeletingId(id);
-      await onDeletePlace(id);
+      setDeletingId(placeToDelete.id);
+      await onDeletePlace(placeToDelete.id);
     } finally {
       setDeletingId(null);
+      setPlaceToDelete(null);
     }
   };
 
@@ -84,13 +90,13 @@ export default function SavedPlacesDrawer({
 
   return (
     <aside
-      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex flex-col justify-end animate-in fade-in duration-200"
+      className="fixed inset-0 z-[70] bg-slate-900/40 backdrop-blur-xs flex flex-col justify-end animate-in fade-in duration-200"
       id="safety-hub-drawer"
     >
       {/* Click background to dismiss */}
       <div className="flex-1" onClick={onClose}></div>
 
-      <div className="w-full max-w-lg mx-auto bg-white rounded-t-[28px] max-h-[82vh] flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300">
+      <div className="w-full max-w-lg mx-auto bg-white rounded-t-[28px] sm:rounded-b-[28px] max-h-[calc(100dvh-4.75rem)] sm:max-h-[82vh] mb-16 sm:mb-0 flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300">
         {/* Top drag handle */}
         <div className="pt-3 pb-1 flex justify-center cursor-pointer" onClick={onClose}>
           <div className="w-10 h-1.5 bg-slate-300 rounded-full"></div>
@@ -237,9 +243,9 @@ export default function SavedPlacesDrawer({
                           </span>
                           <button
                             aria-label={`Delete ${place.label}`}
-                            onClick={(e) => handleDelete(place.id, e)}
+                            onClick={(e) => promptDelete(place, e)}
                             disabled={deletingId === place.id}
-                            className="p-1 text-slate-300 hover:text-rose-500 rounded transition-colors cursor-pointer"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
                             type="button"
                           >
                             {deletingId === place.id ? (
@@ -396,6 +402,57 @@ export default function SavedPlacesDrawer({
           <div className="w-32 h-1 bg-slate-300 rounded-full"></div>
         </div>
       </div>
+
+      {/* IN-UI CONFIRMATION MODAL (Replaces browser alert/confirm popup) */}
+      {placeToDelete && (
+        <div 
+          className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setPlaceToDelete(null)}
+        >
+          <div 
+            className="w-full max-w-sm glass-panel bg-white/95 rounded-3xl p-5 shadow-2xl border border-[#e2e0d8] space-y-4 animate-in zoom-in-95 duration-150 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200 shadow-xs">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="text-base font-extrabold text-[#1c2621]">
+                Remove Saved Place?
+              </h4>
+              <p className="text-xs text-[#55695d] max-w-xs mx-auto leading-relaxed">
+                Are you sure you want to remove <strong className="text-[#1c2621]">&quot;{placeToDelete.label}&quot;</strong>? You will no longer receive proactive flood alerts for this spot.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setPlaceToDelete(null)}
+                className="w-full py-2.5 rounded-xl border border-[#e2e0d8] text-xs font-bold text-[#55695d] hover:bg-[#f6f5f0] active:scale-95 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deletingId === placeToDelete.id}
+                className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {deletingId === placeToDelete.id ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Removing...</span>
+                  </>
+                ) : (
+                  <span>Remove Place</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

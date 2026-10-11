@@ -64,17 +64,39 @@ export default function ReportModal({ isOpen, onClose, lat, lng, onReportSubmitt
           throw new Error('Failed to obtain presigned upload URL');
         }
 
-        const { uploadUrl, key, fileKey } = await urlRes.json();
-        finalS3Key = fileKey || key;
+        let uploaded = false;
+        try {
+          const { uploadUrl, key, fileKey } = await urlRes.json();
+          finalS3Key = fileKey || key;
 
-        const uploadRes = await fetch(uploadUrl, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': contentType },
-        });
+          const uploadRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': contentType },
+          });
 
-        if (!uploadRes.ok) {
-          throw new Error('Failed to upload image directly to S3');
+          if (uploadRes.ok) {
+            uploaded = true;
+          }
+        } catch (s3Err) {
+          console.warn('S3 direct put issue, falling back to local upload endpoint:', s3Err);
+        }
+
+        if (!uploaded) {
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const localRes = await fetch('/api/reports/upload', {
+              method: 'POST',
+              body: formData,
+            });
+            if (localRes.ok) {
+              const localData = await localRes.json();
+              finalS3Key = localData.fileKey;
+            }
+          } catch (localErr) {
+            console.warn('Local upload fallback note:', localErr);
+          }
         }
       }
 
@@ -113,8 +135,8 @@ export default function ReportModal({ isOpen, onClose, lat, lng, onReportSubmitt
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[92dvh]">
+    <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm p-0 sm:p-4 pb-16 sm:pb-0 animate-in fade-in duration-200">
+      <div className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[calc(100dvh-4.75rem)] sm:max-h-[92dvh]">
         {/* Header */}
         <div className="bg-slate-900 p-5 flex justify-between items-center text-white shrink-0">
           <h2 className="font-bold flex items-center text-lg">

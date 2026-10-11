@@ -97,14 +97,14 @@ export default function AskAIView({ userCoords }: AskAIViewProps) {
   return (
     <div className="w-full h-full flex flex-col max-w-3xl mx-auto px-4 py-6 md:px-8 pb-28 md:pb-8">
       {/* Header */}
-      <div className="border-b border-slate-200/80 pb-4 mb-4 flex items-center justify-between">
+      <div className="border-b border-[#e2e0d8] pb-4 mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-teal-600" />
-            AI Environmental Assistant
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[#1c2621] flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-[#244837]" />
+            Environmental Intelligence Advisor
           </h1>
-          <p className="text-xs md:text-sm text-slate-500 mt-1">
-            Grounded intelligence powered by AWS Bedrock & real telemetry
+          <p className="text-xs text-[#617469] mt-1 font-medium">
+            Field synthesis cross-referencing live Open-Meteo telemetry with citizen observations
           </p>
         </div>
       </div>
@@ -117,29 +117,29 @@ export default function AskAIView({ userCoords }: AskAIViewProps) {
             className={`flex gap-3 ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {m.sender === 'assistant' && (
-              <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 border border-teal-100 flex items-center justify-center shrink-0 mt-0.5">
-                <Bot className="w-4 h-4" />
+              <div className="w-7 h-7 rounded-lg bg-[#f0f4f1] text-[#244837] flex items-center justify-center shrink-0 mt-0.5 border border-[#d6e0d9]">
+                <Bot className="w-3.5 h-3.5" />
               </div>
             )}
 
             <div
-              className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-4 text-xs md:text-sm leading-relaxed ${
+              className={`max-w-[85%] md:max-w-[78%] rounded-2xl p-4 text-xs md:text-sm leading-relaxed ${
                 m.sender === 'user'
-                  ? 'bg-gradient-to-r from-teal-600 to-blue-600 text-white rounded-br-none shadow-sm'
-                  : 'bg-white/90 text-slate-800 border border-slate-200/80 rounded-bl-none shadow-sm'
+                  ? 'bg-[#244837] text-white rounded-br-xs shadow-xs'
+                  : 'bg-white text-[#1c2621] border border-[#e2e0d8] rounded-bl-xs shadow-xs'
               }`}
             >
               <div className="whitespace-pre-wrap">{m.text}</div>
 
               {/* Citations block */}
               {m.citations && m.citations.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-teal-600 block">
+                <div className="mt-3 pt-3 border-t border-[#eceae1] space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#3a7d5c] block font-mono">
                     Grounded Telemetry Sources
                   </span>
                   {m.citations.map((c, i) => (
-                    <div key={i} className="text-[11px] bg-slate-50 p-2 rounded-lg border border-slate-200/60 text-slate-700">
-                      <strong>{c.title}:</strong> {c.value}
+                    <div key={i} className="text-[11px] bg-[#f8f7f4] p-2 rounded-lg border border-[#eceae1] text-[#405247]">
+                      <strong className="text-[#1c2621]">{c.title}:</strong> {c.value}
                     </div>
                   ))}
                 </div>
@@ -147,16 +147,16 @@ export default function AskAIView({ userCoords }: AskAIViewProps) {
 
               {/* Uncertainty disclaimer */}
               {m.uncertainty && (
-                <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-slate-400 shrink-0" />
+                <div className="mt-2 text-[10px] text-[#77887e] flex items-center gap-1 font-mono">
+                  <ShieldCheck className="w-3 h-3 text-[#77887e] shrink-0" />
                   <span>{m.uncertainty}</span>
                 </div>
               )}
             </div>
 
             {m.sender === 'user' && (
-              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0 mt-0.5">
-                <User className="w-4 h-4" />
+              <div className="w-7 h-7 rounded-lg bg-[#f6f0eb] text-[#8a7258] flex items-center justify-center shrink-0 mt-0.5 border border-[#e4d6c7]">
+                <User className="w-3.5 h-3.5" />
               </div>
             )}
           </div>
@@ -164,12 +164,12 @@ export default function AskAIView({ userCoords }: AskAIViewProps) {
 
         {isLoading && (
           <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 border border-teal-100 flex items-center justify-center shrink-0">
-              <Bot className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-lg bg-[#f0f4f1] text-[#244837] flex items-center justify-center shrink-0 border border-[#d6e0d9]">
+              <Bot className="w-3.5 h-3.5" />
             </div>
-            <div className="bg-white/90 rounded-2xl p-3.5 border border-slate-200/80 text-xs text-slate-500 flex items-center gap-2 shadow-xs">
-              <Loader2 className="w-4 h-4 animate-spin text-teal-600" />
-              <span>Analyzing live telemetry & cross-referencing hazards...</span>
+            <div className="bg-white rounded-2xl p-3 border border-[#e2e0d8] text-xs text-[#617469] flex items-center gap-2 shadow-xs">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3a7d5c]" />
+              <span>Synthesizing field conditions and telemetry arrays...</span>
             </div>
           </div>
         )}
@@ -177,13 +177,13 @@ export default function AskAIView({ userCoords }: AskAIViewProps) {
 
       {/* Suggested Prompts */}
       <div className="mt-4 pt-2">
-        <div className="flex flex-wrap gap-2 mb-3">
+        <div className="flex flex-wrap gap-1.5 mb-2.5">
           {samplePrompts.map((p, idx) => (
             <button
               key={idx}
               onClick={() => handleSend(p)}
               disabled={isLoading}
-              className="text-[11px] bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 px-3 py-1.5 rounded-full transition-all cursor-pointer text-left shadow-2xs hover:shadow-xs"
+              className="text-[11px] font-medium bg-white/80 backdrop-blur-md hover:bg-white text-[#405247] px-3 py-1.5 rounded-lg border border-[#e2e0d8] hover:border-[#b4cabe] transition-all cursor-pointer shadow-xs disabled:opacity-50 text-left"
             >
               {p}
             </button>
@@ -191,19 +191,19 @@ export default function AskAIView({ userCoords }: AskAIViewProps) {
         </div>
 
         {/* Input box */}
-        <div className="flex items-center gap-2 bg-white/90 border border-slate-200/80 rounded-2xl p-1.5 shadow-md backdrop-blur-md">
+        <div className="flex items-center gap-2 bg-white/90 backdrop-blur-xl border border-[#d6d3c7] rounded-xl p-1.5 shadow-sm focus-within:border-[#244837] focus-within:ring-2 focus-within:ring-[#244837]/15 transition-all">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Ask about air quality or waterlogging in your sector..."
-            className="flex-1 bg-transparent border-none text-xs md:text-sm text-slate-800 px-3 py-2 outline-none placeholder:text-slate-400"
+            placeholder="Ask about atmospheric readings, flooded streets, or commute safety..."
+            className="flex-1 bg-transparent border-none text-xs text-[#1c2621] px-3 py-2 outline-none placeholder:text-[#87968e]"
           />
           <button
             onClick={() => handleSend()}
             disabled={!input.trim() || isLoading}
-            className="p-2.5 bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-600 hover:to-blue-700 disabled:opacity-40 text-white rounded-xl shadow-xs active:scale-95 transition-all cursor-pointer"
+            className="p-2 bg-[#244837] hover:bg-[#1b382b] text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-xs"
           >
             <Send className="w-4 h-4" />
           </button>

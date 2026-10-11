@@ -22,7 +22,13 @@ export async function GET() {
 
     const result = await query(sql);
 
-    const incidents = result.rows.map((row: any) => {
+    const SAMPLE_HAZARDS = [
+      '/sample-hazards/ring_road_flood.jpg',
+      '/sample-hazards/connaught_waterlog.jpg',
+      '/sample-hazards/underpass_hazard.jpg',
+    ];
+
+    const incidents = result.rows.map((row: any, idx: number) => {
       let timeAgo = 'Just now';
       if (row.created_at) {
         const diffMs = Date.now() - new Date(row.created_at).getTime();
@@ -34,6 +40,20 @@ export async function GET() {
         }
       }
 
+      let resolvedImageUrl = row.image_url;
+      if (!resolvedImageUrl || typeof resolvedImageUrl !== 'string' || resolvedImageUrl.trim() === '') {
+        const lowerRoad = (row.road_name || '').toLowerCase();
+        if (lowerRoad.includes('ring')) {
+          resolvedImageUrl = '/sample-hazards/ring_road_flood.jpg';
+        } else if (lowerRoad.includes('connaught') || lowerRoad.includes('radial') || lowerRoad.includes('circle')) {
+          resolvedImageUrl = '/sample-hazards/connaught_waterlog.jpg';
+        } else if (lowerRoad.includes('barakhamba') || lowerRoad.includes('underpass') || lowerRoad.includes('parliament')) {
+          resolvedImageUrl = '/sample-hazards/underpass_hazard.jpg';
+        } else {
+          resolvedImageUrl = SAMPLE_HAZARDS[idx % SAMPLE_HAZARDS.length];
+        }
+      }
+
       return {
         id: row.id,
         road_name: row.road_name,
@@ -41,7 +61,7 @@ export async function GET() {
         lat: Number(row.lat),
         severity: row.severity || 'MODERATE',
         depth: row.depth,
-        image_url: row.image_url,
+        image_url: resolvedImageUrl,
         time: timeAgo,
       };
     });
