@@ -1,4 +1,4 @@
-import { RiskLevel, ReportStatus, VerificationType } from './db';
+import { ReportStatus } from './db';
 
 export interface PresignedUrlRequest {
     filename: string;

@@ -1,51 +1,100 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Map, GeoJSONSource, Marker, setWorkerUrl } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { MapPin, Bell, Crosshair, X, Sparkles } from 'lucide-react';
-import { RoadFeatureProperties } from '@/types/geojson';
-import { SavedLocation, UserAlert } from '@/types/db';
-import RiskLegend from './RiskLegend';
-import RoadDetailDrawer from './RoadDetailDrawer';
-import ReportModal from '../reports/ReportModal';
-import { Plus } from 'lucide-react';
-import ProactiveAlertBanner from '../alerts/ProactiveAlertBanner';
-import SavePlaceModal from '../places/SavePlaceModal';
+import { setWorkerUrl } from 'maplibre-gl';
+import {
+  LocateFixed,
+  AlertTriangle,
+  Bookmark,
+  Plus,
+  Bell,
+  X,
+  Navigation,
+  Droplets,
+  Layers,
+  CheckCircle,
+  XCircle,
+} from 'lucide-react';
+import SearchBar from './SearchBar';
 import SavedPlacesDrawer from '../places/SavedPlacesDrawer';
+import FloodActionsModal from '../modal/FloodActionsModal';
+import { SavedLocation, UserAlert } from '@/types/db';
 
-// Fix for Next.js: maplibre-gl v4+ uses ES Modules (sealed objects) — property mutation won't work.
-// setWorkerUrl() is the official API to point to the pre-built worker served as a static file.
 if (typeof window !== 'undefined') {
   setWorkerUrl('/maplibre-gl-worker.mjs');
 }
 
 export default function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<Map | null>(null);
-  const markersRef = useRef<Marker[]>([]);
-  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const map = useRef<maplibregl.Map | null>(null);
+  const userMarker = useRef<maplibregl.Marker | null>(null);
+  const selectedPinMarker = useRef<maplibregl.Marker | null>(null);
+  const savedPlaceMarkers = useRef<maplibregl.Marker[]>([]);
 
-  // State to track which road was clicked
-  const [selectedRoad, setSelectedRoad] = useState<RoadFeatureProperties | null>(null);
+  const [userLoc, setUserLoc] = useState<{ lng: number; lat: number } | null>(null);
+  const [selectedPinCoords, setSelectedPinCoords] = useState<{ lng: number; lat: number } | null>(null);
+  const [selectedRoad, setSelectedRoad] = useState<any | null>(null);
 
-  // Feature 6: Saved Places and Alerts state
+  // Proximity Engine & Radar Alert State
+  const [nearbyAlert, setNearbyAlert] = useState<any | null>(null);
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
+
+  // Community Verification Handler
+  const handleCommunityVerify = async (status: 'YES' | 'NO', roadId: string) => {
+    // 1. Immediately dismiss from view and mark ignored locally
+    setDismissedAlerts((prev) => new Set(prev).add(roadId));
+    setNearbyAlert(null);
+
+    if (status === 'NO' && map.current) {
+      // 2. Optimistically erase flood from user's map layers
+      try {
+        if (map.current.getLayer('roads-layer')) {
+          const currentFilter = (map.current.getFilter('roads-layer') as any) || ['all'];
+          map.current.setFilter('roads-layer', ['all', currentFilter, ['!=', ['get', 'id'], roadId]] as any);
+        }
+        if (map.current.getLayer('roads-glow')) {
+          const currentFilter = (map.current.getFilter('roads-glow') as any) || ['all'];
+          map.current.setFilter('roads-glow', ['all', currentFilter, ['!=', ['get', 'id'], roadId]] as any);
+        }
+      } catch (e) {
+        console.warn('Error adjusting map filters:', e);
+      }
+
+      // 3. Inform DB in background to mark cleared
+      try {
+        await fetch('/api/reports/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'DISMISS', roadId }),
+        });
+      } catch (e) {
+        console.error('Failed to clear incident from DB:', e);
+      }
+    } else if (status === 'YES') {
+      try {
+        await fetch('/api/reports/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'CONFIRM', roadId }),
+        });
+      } catch (e) {
+        console.error('Failed to confirm incident in DB:', e);
+      }
+    }
+  };
+
+  // Modals & Drawers State
+  const [isSafetyDrawerOpen, setIsSafetyDrawerOpen] = useState(false);
+  const [isFloodActionsModalOpen, setIsFloodActionsModalOpen] = useState(false);
+  const [floodActionsTab, setFloodActionsTab] = useState<'report' | 'save'>('report');
+
   const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
   const [alerts, setAlerts] = useState<UserAlert[]>([]);
   const [isLoadingSafety, setIsLoadingSafety] = useState(false);
-  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
-  const [isSafetyDrawerOpen, setIsSafetyDrawerOpen] = useState(false);
-  const [isPickingLocationOnMap, setIsPickingLocationOnMap] = useState(false);
-  const [pickedCoords, setPickedCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [pickedLabel, setPickedLabel] = useState<string | undefined>(undefined);
 
-  const isPickingRef = useRef(isPickingLocationOnMap);
-
-  useEffect(() => {
-    isPickingRef.current = isPickingLocationOnMap;
-  }, [isPickingLocationOnMap]);
-
-  // 1. Fetch user saved locations and alerts
+  // Fetch Safety Hub Data
   const refreshSafetyData = useCallback(async () => {
     try {
       setIsLoadingSafety(true);
@@ -70,195 +119,255 @@ export default function MapView() {
     }
   }, []);
 
-  // Periodic polling for alerts (e.g. following weather sync updates)
   useEffect(() => {
-    let isMounted = true;
-    const load = async () => {
-      try {
-        const [placesRes, alertsRes] = await Promise.all([
-          fetch('/api/user/saved-locations'),
-          fetch('/api/user/alerts'),
-        ]);
-        if (!isMounted) return;
-        if (placesRes.ok) {
-          const placesData = await placesRes.json();
-          setSavedLocations(placesData.saved_locations || []);
-        }
-        if (alertsRes.ok) {
-          const alertsData = await alertsRes.json();
-          setAlerts(alertsData.alerts || []);
-        }
-      } catch (err) {
-        console.error('Error polling safety data:', err);
-      }
-    };
+    refreshSafetyData();
+  }, [refreshSafetyData]);
 
-    load();
-    const interval = setInterval(load, 25000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, []);
+  // RE-CENTER FUNCTION
+  const flyToUser = () => {
+    if (map.current && userLoc) {
+      map.current.flyTo({ center: [userLoc.lng, userLoc.lat], zoom: 16, essential: true });
+    } else if (map.current) {
+      map.current.flyTo({ center: [77.2198, 28.6291], zoom: 15, essential: true });
+    }
+  };
 
-  // 2. Render Saved Place Markers on the Map
+  // Fly to specific location
+  const handleLocatePlace = (lat: number, lng: number) => {
+    if (map.current) {
+      map.current.flyTo({ center: [lng, lat], zoom: 17, essential: true });
+    }
+    setIsSafetyDrawerOpen(false);
+  };
+
+  // Delete saved place
+  const handleDeletePlace = async (id: string) => {
+    const res = await fetch(`/api/user/saved-locations/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      await refreshSafetyData();
+    }
+  };
+
+  // Alert actions
+  const handleMarkAlertRead = async (alertId: string) => {
+    await fetch(`/api/user/alerts/${alertId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_read: true }),
+    });
+    await refreshSafetyData();
+  };
+
+  const handleMarkAllAlertsRead = async () => {
+    await fetch('/api/user/alerts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mark_all: true }),
+    });
+    await refreshSafetyData();
+  };
+
+  const openFloodActionsWithTab = (tab: 'report' | 'save', coords?: { lng: number; lat: number }) => {
+    setFloodActionsTab(tab);
+    if (coords) setSelectedPinCoords(coords);
+    setIsFloodActionsModalOpen(true);
+  };
+
+  // Render Saved Places Markers on Map
   useEffect(() => {
     if (!map.current) return;
 
-    // Clear existing markers
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    // Clear old markers
+    savedPlaceMarkers.current.forEach((m) => m.remove());
+    savedPlaceMarkers.current = [];
 
-    // Add marker for each saved place
+    // Only render actual saved locations from the database
     savedLocations.forEach((place) => {
       const el = document.createElement('div');
-      el.className = 'group cursor-pointer select-none';
+      const isSevere =
+        place.nearest_road_risk_level === 'SEVERE' || place.nearest_road_risk_level === 'HIGH';
 
-      const isElevated =
-        place.nearest_road_risk_level === 'HIGH' ||
-        place.nearest_road_risk_level === 'SEVERE';
+      el.className =
+        'flex items-center gap-1.5 px-2.5 py-1 bg-white/95 backdrop-blur-xs border rounded-full shadow-md text-xs font-bold cursor-pointer hover:scale-105 transition-all select-none whitespace-nowrap ' +
+        (isSevere
+          ? 'border-red-400 text-red-700 hover:border-red-600'
+          : 'border-slate-300 text-slate-800 hover:border-blue-500');
 
-      const getIconEmoji = (lbl: string) => {
-        const l = lbl.toLowerCase();
-        if (l.includes('home')) return '🏠';
-        if (l.includes('work') || l.includes('office')) return '💼';
-        if (l.includes('school')) return '🎒';
-        return '📍';
-      };
+      const iconEmoji =
+        place.label.toLowerCase().includes('work') || place.label.toLowerCase().includes('office')
+          ? '💼'
+          : place.label.toLowerCase().includes('home')
+          ? '🏠'
+          : place.label.toLowerCase().includes('school')
+          ? '🎓'
+          : '📍';
 
-      el.innerHTML = `
-        <div style="
-          background: ${isElevated ? '#fef2f2' : '#ffffff'};
-          border: 2px solid ${isElevated ? '#ef4444' : '#2563eb'};
-          color: ${isElevated ? '#991b1b' : '#1e3a8a'};
-          border-radius: 9999px;
-          padding: 3px 8px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 11px;
-          font-weight: 700;
-          transition: transform 0.2s ease;
-        ">
-          <span>${getIconEmoji(place.label)}</span>
-          <span>${place.label}</span>
-          ${isElevated ? '<span style="color:#ef4444;font-size:10px;">⚠️</span>' : ''}
-        </div>
-      `;
+      el.innerHTML = `<span>${iconEmoji}</span><span>${place.label}</span>`;
 
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        map.current?.flyTo({
-          center: [place.longitude, place.latitude],
-          zoom: 15.5,
-          essential: true,
-        });
+      el.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        map.current?.flyTo({ center: [place.longitude, place.latitude], zoom: 17 });
+        setIsSafetyDrawerOpen(true);
       });
 
-      const marker = new Marker({ element: el })
+      const marker = new maplibregl.Marker({ element: el })
         .setLngLat([place.longitude, place.latitude])
         .addTo(map.current!);
 
-      markersRef.current.push(marker);
+      savedPlaceMarkers.current.push(marker);
     });
   }, [savedLocations]);
 
-  // 3. Initialize MapLibre
+  // Main Map Initialization
   useEffect(() => {
     if (map.current || !mapContainer.current) return;
 
-    map.current = new Map({
+    map.current = new maplibregl.Map({
       container: mapContainer.current,
-      style:
-        process.env.NEXT_PUBLIC_MAP_STYLE_URL ||
-        'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
-      center: [
-        Number(process.env.NEXT_PUBLIC_DEFAULT_LNG || 77.2167),
-        Number(process.env.NEXT_PUBLIC_DEFAULT_LAT || 28.6315),
-      ],
-      zoom: Number(process.env.NEXT_PUBLIC_DEFAULT_ZOOM || 14),
+      style: {
+        version: 8,
+        sources: {
+          'google-streets': {
+            type: 'raster',
+            tiles: ['https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'],
+            tileSize: 256,
+          },
+        },
+        layers: [
+          {
+            id: 'google-base-layer',
+            type: 'raster',
+            source: 'google-streets',
+            minzoom: 0,
+            maxzoom: 22,
+          },
+        ],
+      },
+      center: [77.2198, 28.6291],
+      zoom: 14,
+      attributionControl: false,
     });
 
     map.current.on('load', () => {
       if (!map.current) return;
 
+      map.current.resize();
+
+      // GET INITIAL GPS
+      if ('geolocation' in navigator) {
+        navigator.geolocation.watchPosition(
+          (pos) => {
+            const { longitude, latitude } = pos.coords;
+            setUserLoc({ lng: longitude, lat: latitude });
+
+            if (!userMarker.current && map.current) {
+              const dot = document.createElement('div');
+              dot.className =
+                'w-4 h-4 bg-blue-600 border-2 border-white rounded-full shadow-[0_0_15px_rgba(37,99,235,0.8)]';
+              userMarker.current = new maplibregl.Marker({ element: dot })
+                .setLngLat([longitude, latitude])
+                .addTo(map.current);
+            } else {
+              userMarker.current?.setLngLat([longitude, latitude]);
+            }
+          },
+          (err) => console.warn('GPS:', err),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        );
+      }
+
+      // ADD POSTGIS SOURCES
       map.current.addSource('roads', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
 
+      // THE "GLOW" LAYER: Only apply glow to SEVERE and HIGH roads
+      map.current.addLayer({
+        id: 'roads-glow',
+        type: 'line',
+        source: 'roads',
+        filter: ['in', ['get', 'current_risk_level'], ['literal', ['SEVERE', 'HIGH']]],
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-width': 16,
+          'line-blur': 10,
+          'line-opacity': 0.6,
+          'line-color': '#ef4444',
+        },
+      });
+
+      // THE MAIN INCIDENT LAYER: Make LOW and MODERATE roads visible again
       map.current.addLayer({
         id: 'roads-layer',
         type: 'line',
         source: 'roads',
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round',
-        },
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
           'line-width': 6,
           'line-color': [
             'match',
             ['get', 'current_risk_level'],
-            'LOW', '#22c55e',
-            'MODERATE', '#eab308',
-            'HIGH', '#f97316',
-            'SEVERE', '#ef4444',
+            'SEVERE',
+            '#ef4444',
+            'HIGH',
+            '#f97316',
+            'MODERATE',
+            '#eab308',
+            'LOW',
+            '#22c55e',
             '#94a3b8',
           ],
         },
       });
 
-      // INTERACTIVITY: Change cursor to pointer on hover
-      map.current.on('mouseenter', 'roads-layer', () => {
-        if (map.current && !isPickingRef.current) {
-          map.current.getCanvas().style.cursor = 'pointer';
-        }
-      });
-      map.current.on('mouseleave', 'roads-layer', () => {
-        if (map.current && !isPickingRef.current) {
-          map.current.getCanvas().style.cursor = '';
-        }
-      });
-
-      // INTERACTIVITY: Click event for roads
-      map.current.on('click', 'roads-layer', (e) => {
-        if (isPickingRef.current) return; // Ignore if user is pinning a location
-        if (e.features && e.features.length > 0) {
-          const feature = e.features[0];
-          setSelectedRoad(feature.properties as unknown as RoadFeatureProperties);
-        }
-      });
-
-      // INTERACTIVITY: Map-level click for picking coordinates
+      // MAP CLICK ROUTER
       map.current.on('click', (e) => {
-        if (isPickingRef.current) {
-          setPickedCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-          setIsPickingLocationOnMap(false);
-          if (map.current) {
-            map.current.getCanvas().style.cursor = '';
-          }
-          setIsSaveModalOpen(true);
+        if (!map.current) return;
+        const features = map.current.queryRenderedFeatures(e.point, { layers: ['roads-layer'] });
+
+        // Clicked existing flood risk road
+        if (features.length > 0) {
+          setSelectedRoad(features[0].properties);
+          setSelectedPinCoords(null);
+          if (selectedPinMarker.current) selectedPinMarker.current.remove();
+          return;
         }
+
+        // Clicked map empty space
+        setSelectedRoad(null);
+        setSelectedPinCoords({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+
+        // Clean drop pin
+        const pinElement = document.createElement('div');
+        pinElement.className = 'w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white cursor-pointer hover:scale-110 transition-transform';
+        pinElement.innerHTML = `
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path d="M12 21s-6-5.33-6-10a6 6 0 1112 0c0 4.67-6 10-6 10z"></path>
+          </svg>
+        `;
+
+        if (selectedPinMarker.current) selectedPinMarker.current.remove();
+        selectedPinMarker.current = new maplibregl.Marker({
+          element: pinElement,
+          anchor: 'bottom',
+        })
+          .setLngLat([e.lngLat.lng, e.lngLat.lat])
+          .addTo(map.current);
       });
 
+      // Fetch dynamic roads data
       const fetchRoads = async () => {
         const bounds = map.current?.getBounds();
         if (!bounds) return;
-
         const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
-
         try {
           const res = await fetch(`/api/risk/area?bbox=${bbox}`);
           const data = await res.json();
-
           if (map.current?.getSource('roads')) {
-            (map.current.getSource('roads') as GeoJSONSource).setData(data);
+            (map.current.getSource('roads') as maplibregl.GeoJSONSource).setData(data);
           }
-        } catch (err) {
-          console.error('Failed to fetch road risks:', err);
-        }
+        } catch (err) {}
       };
 
       fetchRoads();
@@ -266,220 +375,297 @@ export default function MapView() {
     });
 
     return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
+      map.current?.remove();
+      map.current = null;
     };
   }, []);
 
-  // Update cursor when picking mode toggles
+  // PROXIMITY ENGINE LOOP: Scans screen space around user's GPS for high/severe flooded roads
   useEffect(() => {
-    if (!map.current) return;
-    map.current.getCanvas().style.cursor = isPickingLocationOnMap ? 'crosshair' : '';
-  }, [isPickingLocationOnMap]);
+    if (!map.current || !userLoc) return;
 
-  // Handle escape key to cancel picking mode
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isPickingLocationOnMap) {
-        setIsPickingLocationOnMap(false);
+    const checkProximity = () => {
+      if (!map.current) return;
+
+      // Project user's GPS into screen pixels
+      const point = map.current.project([userLoc.lng, userLoc.lat]);
+
+      // Create a roughly ~150 meter invisible hit box on the screen
+      const hitBox = [
+        [point.x - 60, point.y - 60],
+        [point.x + 60, point.y + 60],
+      ] as [maplibregl.PointLike, maplibregl.PointLike];
+
+      // Query if any red/severe roads intersect this hit box
+      const nearbyFeatures = map.current.queryRenderedFeatures(hitBox, {
+        layers: ['roads-layer'],
+      });
+
+      // Find first severe/high hazard not already dismissed by user
+      const activeHazard = nearbyFeatures.find(
+        (f) =>
+          (f.properties?.current_risk_level === 'SEVERE' || f.properties?.current_risk_level === 'HIGH') &&
+          !dismissedAlerts.has(f.properties?.id)
+      );
+
+      if (activeHazard) {
+        setNearbyAlert(activeHazard.properties);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPickingLocationOnMap]);
 
-  // Alert Actions
-  const handleDismissAlert = async (alertId: string) => {
-    // Optimistic UI update
-    setAlerts((prev) =>
-      prev.map((a) => (a.id === alertId ? { ...a, is_read: true } : a))
-    );
-    try {
-      await fetch(`/api/user/alerts/${alertId}`, { method: 'PATCH' });
-    } catch (err) {
-      console.error('Failed to mark alert as read:', err);
-    }
-  };
+    const timeout = setTimeout(checkProximity, 1000);
+    return () => clearTimeout(timeout);
+  }, [userLoc, dismissedAlerts]);
 
-  const handleMarkAllAlertsRead = async () => {
-    setAlerts((prev) => prev.map((a) => ({ ...a, is_read: true })));
-    try {
-      await fetch('/api/user/alerts', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mark_all: true }),
-      });
-    } catch (err) {
-      console.error('Failed to mark all alerts read:', err);
-    }
-  };
-
-  const handleDeletePlace = async (id: string) => {
-    try {
-      const res = await fetch(`/api/user/saved-locations/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setSavedLocations((prev) => prev.filter((p) => p.id !== id));
-        refreshSafetyData();
-      }
-    } catch (err) {
-      console.error('Failed to delete saved location:', err);
-    }
-  };
-
-  const handleLocatePlace = (latitude: number, longitude: number) => {
-    map.current?.flyTo({
-      center: [longitude, latitude],
-      zoom: 15.5,
-      essential: true,
-    });
-  };
-
-  const handleLocateAlert = (alert: UserAlert) => {
-    if (alert.longitude !== undefined && alert.latitude !== undefined) {
-      map.current?.flyTo({
-        center: [alert.longitude, alert.latitude],
-        zoom: 15.5,
-        essential: true,
-      });
-    }
-  };
-
-  // Quick action from RoadDetailDrawer: save current road
-  const handleSaveRoadAsPlace = (road: RoadFeatureProperties) => {
-    // Center of map or default coordinates
-    const center = map.current?.getCenter();
-    setPickedCoords({
-      lat: center ? center.lat : 28.6315,
-      lng: center ? center.lng : 77.2167,
-    });
-    setPickedLabel(road.road_name);
-    setIsSaveModalOpen(true);
+  const clearSelectedPin = () => {
+    setSelectedPinCoords(null);
+    if (selectedPinMarker.current) selectedPinMarker.current.remove();
   };
 
   const unreadAlertsCount = alerts.filter((a) => !a.is_read).length;
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-slate-950 font-sans">
-      {/* Map Container */}
+    <div className="relative w-full h-full min-h-[100dvh] overflow-hidden bg-slate-900 select-none">
+      {/* 1. Full-Bleed Map Canvas */}
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
-      {/* Floating Top Citizen Navigation Header */}
-      <header className="absolute top-4 left-4 right-4 z-30 pointer-events-none flex items-center justify-between">
-        {/* Brand Tag */}
-        <div className="pointer-events-auto flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-slate-900/80 text-white backdrop-blur-md border border-slate-700/60 shadow-xl">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400" />
-          <div className="flex flex-col">
-            <span className="text-xs font-black tracking-wide text-white uppercase flex items-center gap-1">
-              FloodLens <Sparkles className="w-3 h-3 text-cyan-400" />
-            </span>
-            <span className="text-[10px] text-slate-300 font-medium">Citizen Safety Network</span>
-          </div>
+
+      {/* 2. Top Navigation Bar (Clean & Uncluttered) */}
+      <div className="absolute top-4 left-4 right-4 z-20 pointer-events-none flex items-center justify-between gap-3 max-w-4xl mx-auto">
+        {/* Search Bar */}
+        <div className="flex-1 pointer-events-auto max-w-md">
+          <SearchBar
+            onLocationSelect={(lng, lat) => {
+              map.current?.flyTo({ center: [lng, lat], zoom: 17 });
+              setSelectedPinCoords({ lng, lat });
+            }}
+          />
         </div>
 
-        {/* Action Controls */}
-        <div className="pointer-events-auto flex items-center gap-2">
-          {/* Report Flood Button */}
-          <button
-            onClick={() => setIsReportModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-gray-50 text-gray-900 font-bold text-xs transition-all shadow-lg shadow-black/10 cursor-pointer active:scale-95 border border-gray-200"
-          >
-            <div className="w-3.5 h-3.5 rounded-full bg-blue-600 text-white flex items-center justify-center">
-              <Plus className="w-2.5 h-2.5 stroke-[3]" />
-            </div>
-            <span className="hidden sm:inline">Report Flood</span>
-          </button>
-          
-          {/* Save Place Button */}
-          <button
-            type="button"
-            onClick={() => {
-              const center = map.current?.getCenter();
-              setPickedCoords({
-                lat: center ? center.lat : 28.6315,
-                lng: center ? center.lng : 77.2167,
-              });
-              setIsSaveModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-lg shadow-blue-600/30 cursor-pointer active:scale-95"
-          >
-            <MapPin className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Save Place</span>
-          </button>
+        {/* Top Controls Cluster */}
+        <div className="pointer-events-auto flex items-center gap-2 shrink-0">
+          {/* Status Pill */}
+          <div className="hidden sm:flex items-center gap-2 px-3.5 py-2.5 bg-white/95 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/90 text-xs font-bold text-slate-800">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Delhi NCR</span>
+          </div>
 
-          {/* Citizen Safety Hub Drawer Toggle */}
+          {/* Citizen Safety Hub Trigger */}
           <button
-            type="button"
             onClick={() => setIsSafetyDrawerOpen(true)}
-            className="relative flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900/85 hover:bg-slate-800 text-white text-xs font-bold transition-all backdrop-blur-md border border-slate-700/60 shadow-xl cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-2xl shadow-sm text-xs font-bold transition-all cursor-pointer"
+            title="Citizen Safety Hub"
           >
-            <Bell className="w-4 h-4 text-slate-200" />
-            <span className="hidden sm:inline">Safety Hub</span>
-            {unreadAlertsCount > 0 ? (
-              <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-black animate-pulse shadow-sm shadow-red-500">
-                {unreadAlertsCount}
-              </span>
-            ) : savedLocations.length > 0 ? (
-              <span className="px-1.5 py-0.2 rounded-full bg-slate-700 text-slate-200 text-[10px] font-medium">
+            <Bookmark className="w-3.5 h-3.5 text-slate-300" />
+            <span className="hidden xs:inline">Safety Hub</span>
+            {savedLocations.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-blue-600 text-[10px] font-black">
                 {savedLocations.length}
               </span>
-            ) : null}
+            )}
+            {unreadAlertsCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping ml-0.5"></span>
+            )}
           </button>
         </div>
-      </header>
+      </div>
 
-      {/* Picking Location Guide Overlay */}
-      {isPickingLocationOnMap && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-full bg-blue-600 text-white text-xs font-bold shadow-2xl flex items-center gap-2 animate-bounce">
-          <Crosshair className="w-4 h-4 animate-spin" />
-          <span>Click anywhere on the map to pin this place</span>
-          <button
-            type="button"
-            onClick={() => setIsPickingLocationOnMap(false)}
-            className="p-1 rounded-full hover:bg-blue-700 cursor-pointer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+      {/* Community Radar Proximity Alert Popup */}
+      {nearbyAlert && (
+        <div className="absolute top-20 left-4 right-4 z-40 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-red-200 overflow-hidden animate-in fade-in slide-in-from-top duration-300 max-w-md mx-auto pointer-events-auto">
+          <div className="bg-red-600 px-4 py-2.5 text-white flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 animate-pulse text-amber-300" />
+              <span className="font-extrabold text-[11px] tracking-wider uppercase">COMMUNITY RADAR ALERT</span>
+            </div>
+            <button
+              onClick={() => {
+                setDismissedAlerts((prev) => new Set(prev).add(nearbyAlert.id));
+                setNearbyAlert(null);
+              }}
+              className="text-white/80 hover:text-white cursor-pointer"
+              title="Dismiss Alert"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="p-4">
+            <p className="text-slate-800 text-xs font-semibold mb-1">
+              You are approaching a reported hazard on <span className="font-black text-slate-900">{nearbyAlert.road_name || 'this street'}</span>.
+            </p>
+            <p className="text-xs text-slate-500 mb-3.5">Can you verify if this area is still flooded?</p>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleCommunityVerify('YES', nearbyAlert.id)}
+                className="flex-1 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-1.5 text-xs cursor-pointer"
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span>Still Flooded</span>
+              </button>
+              <button
+                onClick={() => handleCommunityVerify('NO', nearbyAlert.id)}
+                className="flex-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-1.5 text-xs cursor-pointer"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>It&apos;s Clear</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Proactive Alert Banner (Top Center) */}
-      <ProactiveAlertBanner
-        alerts={alerts}
-        onDismiss={handleDismissAlert}
-        onLocate={handleLocateAlert}
-        onViewAll={() => setIsSafetyDrawerOpen(true)}
-      />
+      {/* 3. Floating Map Controls (Right Side) */}
+      <div className="absolute right-4 top-24 z-20 flex flex-col gap-2 pointer-events-auto">
+        <button
+          onClick={flyToUser}
+          className="w-10 h-10 bg-white/95 backdrop-blur-md rounded-2xl shadow-md border border-slate-200/90 flex items-center justify-center text-slate-700 hover:text-blue-600 active:scale-95 transition-all cursor-pointer"
+          title="Locate Me"
+        >
+          <LocateFixed className="w-4 h-4" />
+        </button>
 
-      {/* Map Legend */}
-      <RiskLegend />
+        <div className="flex flex-col bg-white/95 backdrop-blur-md rounded-2xl shadow-md border border-slate-200/90 overflow-hidden">
+          <button
+            onClick={() => map.current?.zoomIn()}
+            className="w-10 h-9 flex items-center justify-center text-slate-700 hover:bg-slate-100 font-bold text-sm transition-colors cursor-pointer"
+            title="Zoom In"
+          >
+            +
+          </button>
+          <div className="w-full h-px bg-slate-200"></div>
+          <button
+            onClick={() => map.current?.zoomOut()}
+            className="w-10 h-9 flex items-center justify-center text-slate-700 hover:bg-slate-100 font-bold text-sm transition-colors cursor-pointer"
+            title="Zoom Out"
+          >
+            −
+          </button>
+        </div>
+      </div>
 
-      {/* Road Inspection Drawer */}
-      <RoadDetailDrawer
-        road={selectedRoad}
-        onClose={() => setSelectedRoad(null)}
-        onSaveAsPlace={handleSaveRoadAsPlace}
-      />
+      {/* 4. Map Pin Action Card (When user taps anywhere on map) */}
+      {selectedPinCoords && !isFloodActionsModalOpen && !isSafetyDrawerOpen && (
+        <div className="absolute bottom-24 left-4 right-4 z-20 max-w-sm mx-auto pointer-events-auto animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-3.5 flex flex-col gap-2.5">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                  Selected Map Location
+                </span>
+                <p className="text-xs font-mono font-bold text-slate-800">
+                  {selectedPinCoords.lat.toFixed(4)}, {selectedPinCoords.lng.toFixed(4)}
+                </p>
+              </div>
+              <button
+                onClick={clearSelectedPin}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-      {/* Save Place Dialog Modal */}
-      <SavePlaceModal
-        key={`${pickedCoords?.lat}-${pickedCoords?.lng}-${pickedLabel}`}
-        isOpen={isSaveModalOpen}
-        onClose={() => {
-          setIsSaveModalOpen(false);
-          setPickedLabel(undefined);
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => openFloodActionsWithTab('report', selectedPinCoords)}
+                className="py-2.5 px-3 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                <span>Report Hazard</span>
+              </button>
+
+              <button
+                onClick={() => openFloodActionsWithTab('save', selectedPinCoords)}
+                className="py-2.5 px-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Bookmark className="w-3.5 h-3.5 text-blue-600" />
+                <span>Save Place</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Road Hazard Info Card (When user clicks flooded street) */}
+      {selectedRoad && !isFloodActionsModalOpen && !isSafetyDrawerOpen && (
+        <div className="absolute bottom-24 left-4 right-4 z-20 max-w-sm mx-auto pointer-events-auto animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white rounded-2xl shadow-xl border border-red-200 p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-1.5 text-red-600 text-[10px] font-extrabold uppercase tracking-wider">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>{selectedRoad.current_risk_level || 'SEVERE'} RISK ROAD</span>
+                </div>
+                <h4 className="text-sm font-black text-slate-900 mt-0.5">
+                  {selectedRoad.road_name || 'Flooded Segment'}
+                </h4>
+              </div>
+              <button
+                onClick={() => setSelectedRoad(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between text-xs pt-2.5 border-t border-slate-100">
+              <span className="text-slate-500 font-medium">Risk Score</span>
+              <span className="font-extrabold text-red-700 font-mono">
+                {selectedRoad.current_risk_score ?? 81}/100
+              </span>
+            </div>
+
+            <button
+              onClick={() => openFloodActionsWithTab('report')}
+              className="mt-3 w-full py-2 px-3 bg-red-600 hover:bg-red-700 active:scale-98 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Droplets className="w-3.5 h-3.5" />
+              <span>Submit Street Condition Report</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Clean Bottom Floating Action Bar */}
+      <div className="absolute bottom-6 left-4 right-4 z-20 pointer-events-none flex items-center justify-center max-w-md mx-auto">
+        <div className="pointer-events-auto flex items-center gap-2.5 w-full bg-white/95 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-slate-200/90">
+          <button
+            onClick={() => openFloodActionsWithTab('report')}
+            className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white rounded-xl shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 font-bold text-xs transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Report Flood Hazard</span>
+          </button>
+
+          <button
+            onClick={() => setIsSafetyDrawerOpen(true)}
+            className="py-3 px-3.5 bg-slate-100 hover:bg-slate-200 active:scale-98 text-slate-800 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-colors cursor-pointer"
+            title="My Saved Places & Alerts"
+          >
+            <Bookmark className="w-4 h-4 text-slate-600" />
+            <span>Saved ({savedLocations.length})</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 7. Flood Actions Bottom Sheet Modal */}
+      <FloodActionsModal
+        isOpen={isFloodActionsModalOpen}
+        onClose={() => setIsFloodActionsModalOpen(false)}
+        initialTab={floodActionsTab}
+        currentCoords={selectedPinCoords || userLoc || { lat: 28.6291, lng: 77.2198 }}
+        onRefreshGPS={flyToUser}
+        onSavePlaceSuccess={async () => {
+          await refreshSafetyData();
         }}
-        initialCoords={pickedCoords}
-        initialLabel={pickedLabel}
-        onStartMapPick={() => setIsPickingLocationOnMap(true)}
-        onSaveSuccess={(newPlace) => {
-          setSavedLocations((prev) => [newPlace, ...prev]);
-          refreshSafetyData();
-          setPickedLabel(undefined);
+        onReportSuccess={async () => {
+          await refreshSafetyData();
+        }}
+        onSelectOnMap={() => {
+          setIsFloodActionsModalOpen(false);
         }}
       />
 
-      {/* Citizen Safety Hub & Alert History Drawer */}
+      {/* 8. Citizen Safety Hub (Bottom Sheet Drawer) */}
       <SavedPlacesDrawer
         isOpen={isSafetyDrawerOpen}
         onClose={() => setIsSafetyDrawerOpen(false)}
@@ -487,24 +673,18 @@ export default function MapView() {
         alerts={alerts}
         isLoading={isLoadingSafety}
         onAddNewPlace={() => {
-          setIsSafetyDrawerOpen(false);
-          const center = map.current?.getCenter();
-          setPickedCoords({
-            lat: center ? center.lat : 28.6315,
-            lng: center ? center.lng : 77.2167,
-          });
-          setIsSaveModalOpen(true);
+          openFloodActionsWithTab('save');
         }}
         onDeletePlace={handleDeletePlace}
-        onMarkAlertRead={handleDismissAlert}
+        onMarkAlertRead={handleMarkAlertRead}
         onMarkAllAlertsRead={handleMarkAllAlertsRead}
         onLocatePlace={handleLocatePlace}
-        onLocateAlert={handleLocateAlert}
-      />
-
-      <ReportModal
-        isOpen={isReportModalOpen}
-        onClose={() => setIsReportModalOpen(false)}
+        onLocateAlert={(alert) => {
+          if (alert.longitude && alert.latitude && map.current) {
+            map.current.flyTo({ center: [alert.longitude, alert.latitude], zoom: 17 });
+          }
+          setIsSafetyDrawerOpen(false);
+        }}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 
-const bedrockClient = new BedrockRuntimeClient({
+export const bedrockClient = new BedrockRuntimeClient({
     region: process.env.AWS_REGION || 'ap-south-1',
     credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
@@ -57,8 +57,13 @@ Use this exact schema:
         const responseBody = JSON.parse(new TextDecoder().decode(response.body));
         const textOutput = responseBody.content[0].text.trim();
 
-        // Parse and return the strict JSON output
-        return JSON.parse(textOutput);
+        // Strip markdown code blocks before parsing
+        const cleanJsonString = textOutput
+            .replace(/```json\n?/g, '')
+            .replace(/```\n?/g, '')
+            .trim();
+
+        return JSON.parse(cleanJsonString);
     } catch (error) {
         console.error("Bedrock AI Error:", error);
         throw new Error("Failed to process image via Bedrock AI");
