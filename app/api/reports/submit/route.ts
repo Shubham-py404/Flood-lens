@@ -16,7 +16,14 @@ export async function POST(request: Request) {
             );
         }
 
-        const { latitude, longitude, s3_image_key, voice_transcript, depth_estimate, description, user_id } = body;
+        const rawBody: any = body;
+        const latitude = body.latitude !== undefined ? Number(body.latitude) : (rawBody.lat !== undefined ? Number(rawBody.lat) : undefined);
+        const longitude = body.longitude !== undefined ? Number(body.longitude) : (rawBody.lng !== undefined ? Number(rawBody.lng) : undefined);
+        const s3_image_key = body.s3_image_key || rawBody.s3Key || null;
+        const userSeverity = rawBody.userSeverityRating;
+        const depth_estimate = body.depth_estimate || (userSeverity ? `Severity ${userSeverity}/5` : null);
+        const description = body.description || (userSeverity ? `Severity ${userSeverity}/5 citizen rating` : null);
+        const { voice_transcript, user_id } = body;
 
         if (latitude === undefined || longitude === undefined || isNaN(latitude) || isNaN(longitude)) {
             return NextResponse.json(

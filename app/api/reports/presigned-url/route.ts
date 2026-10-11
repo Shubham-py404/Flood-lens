@@ -36,9 +36,32 @@ export async function POST(request: Request) {
         return NextResponse.json({
             uploadUrl,
             fileKey,
+            key: fileKey,
         });
     } catch (error: any) {
         console.error('Presigned URL generation error:', error?.message || error);
+        return NextResponse.json(
+            { error: error?.message || 'Failed to generate upload URL' },
+            { status: 500 }
+        );
+    }
+}
+
+export async function GET(request: Request) {
+    try {
+        const { searchParams } = new URL(request.url);
+        const contentType = searchParams.get('mimeType') || searchParams.get('contentType') || 'image/jpeg';
+        const filename = searchParams.get('filename') || `report-${Date.now()}.jpg`;
+
+        const { uploadUrl, fileKey } = await createPresignedUploadUrl(filename, contentType);
+
+        return NextResponse.json({
+            uploadUrl,
+            fileKey,
+            key: fileKey,
+        });
+    } catch (error: any) {
+        console.error('Presigned URL GET generation error:', error?.message || error);
         return NextResponse.json(
             { error: error?.message || 'Failed to generate upload URL' },
             { status: 500 }
