@@ -123,13 +123,40 @@ export default function MapView() {
     refreshSafetyData();
   }, [refreshSafetyData]);
 
-  // RE-CENTER FUNCTION
+  // RE-CENTER FUNCTION (Tied to a direct User Gesture)
   const flyToUser = () => {
-    if (map.current && userLoc) {
-      map.current.flyTo({ center: [userLoc.lng, userLoc.lat], zoom: 16, essential: true });
-    } else if (map.current) {
-      map.current.flyTo({ center: [77.2198, 28.6291], zoom: 15, essential: true });
+    if (!('geolocation' in navigator)) {
+      alert('Geolocation is not supported by this browser.');
+      return;
     }
+
+    // Force a fresh GPS request on user click
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { longitude, latitude } = pos.coords;
+        setUserLoc({ lng: longitude, lat: latitude });
+
+        if (map.current) {
+          map.current.flyTo({ center: [longitude, latitude], zoom: 17, essential: true });
+
+          if (!userMarker.current) {
+            const dot = document.createElement('div');
+            dot.className =
+              'w-5 h-5 bg-blue-500 border-2 border-white rounded-full shadow-[0_0_20px_rgba(59,130,246,0.8)]';
+            userMarker.current = new maplibregl.Marker({ element: dot })
+              .setLngLat([longitude, latitude])
+              .addTo(map.current);
+          } else {
+            userMarker.current.setLngLat([longitude, latitude]);
+          }
+        }
+      },
+      (err) => {
+        console.warn('GPS Button Error:', err);
+        alert("Please allow location access in your phone's browser settings to find your location.");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   // Fly to specific location
