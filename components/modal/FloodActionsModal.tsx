@@ -6,9 +6,6 @@ import {
   MapPin,
   X,
   Camera,
-  Mic,
-  MicOff,
-  RefreshCw,
   Send,
   Loader2,
   CheckCircle2,
@@ -16,6 +13,7 @@ import {
   Home,
   Briefcase,
   GraduationCap,
+  Trash2,
 } from 'lucide-react';
 import { RiskLevel, SavedLocation } from '@/types/db';
 
@@ -42,22 +40,21 @@ export default function FloodActionsModal({
 }: FloodActionsModalProps) {
   const [activeTab, setActiveTab] = useState<'report' | 'save'>(initialTab);
 
-  // Sync initial tab when opened
+  // Sync initial tab whenever opened
   useEffect(() => {
     if (isOpen) {
       setActiveTab(initialTab);
+      setErrorMessage(null);
     }
   }, [isOpen, initialTab]);
 
-  // Tab 1 (Report) State
+  // Tab 1 (Report Flood) State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [notes, setNotes] = useState('');
-  const [isListening, setIsListening] = useState(false);
+  const [severityRating, setSeverityRating] = useState<number>(3); // 1-5 rating, default 3 (Moderate)
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
-  const recognitionRef = useRef<any>(null);
 
   // Tab 2 (Save Place) State
   const [selectedLabelPreset, setSelectedLabelPreset] = useState<'Home' | 'Work' | 'School' | 'Custom'>('Home');
@@ -77,58 +74,20 @@ export default function FloodActionsModal({
     }
   }, [currentCoords]);
 
-  // Voice dictation setup
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-US';
-
-        recognition.onresult = (event: any) => {
-          let currentTranscript = '';
-          for (let i = 0; i < event.results.length; i++) {
-            currentTranscript += event.results[i][0].transcript + ' ';
-          }
-          setNotes((prev) => {
-            const trimmed = currentTranscript.trim();
-            return trimmed.length > 280 ? trimmed.slice(0, 280) : trimmed;
-          });
-        };
-
-        recognition.onerror = () => setIsListening(false);
-        recognition.onend = () => setIsListening(false);
-        recognitionRef.current = recognition;
-      }
-    }
-  }, []);
-
-  const toggleVoice = () => {
-    if (!recognitionRef.current) {
-      alert('Voice dictation is not supported in this browser.');
-      return;
-    }
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    } else {
-      try {
-        recognitionRef.current.start();
-        setIsListening(true);
-      } catch (err) {
-        console.warn(err);
-      }
-    }
-  };
-
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
       setPhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const clearPhoto = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedFile(null);
+    setPhotoPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -173,7 +132,7 @@ export default function FloodActionsModal({
           latitude: lat,
           longitude: lng,
           s3_image_key: s3ImageKey,
-          description: notes.trim() || undefined,
+          userSeverityRating: severityRating,
         }),
       });
 
@@ -188,7 +147,7 @@ export default function FloodActionsModal({
         setReportSuccess(false);
         setSelectedFile(null);
         setPhotoPreview(null);
-        setNotes('');
+        setSeverityRating(3);
         onClose();
       }, 1200);
     } catch (err: any) {
@@ -252,8 +211,13 @@ export default function FloodActionsModal({
 
   if (!isOpen) return null;
 
-  const displayLat = currentCoords ? currentCoords.lat.toFixed(4) : latInput || '28.6291';
-  const displayLng = currentCoords ? currentCoords.lng.toFixed(4) : lngInput || '77.2198';
+  const severityLevels = [
+    { value: 1, label: 'Minor', depth: '10cm', color: 'bg-emerald-500' },
+    { value: 2, label: 'Ankle', depth: '20cm', color: 'bg-teal-500' },
+    { value: 3, label: 'Knee', depth: '35cm', color: 'bg-amber-500' },
+    { value: 4, label: 'Waist', depth: '50cm', color: 'bg-orange-500' },
+    { value: 5, label: 'Severe', depth: '75cm+', color: 'bg-red-500' },
+  ];
 
   return (
     <div
@@ -261,7 +225,7 @@ export default function FloodActionsModal({
       id="flood-actions-modal"
     >
       {/* Backdrop dismiss click area */}
-      <div className="flex-1" onClick={onClose}></div>
+      <div className="flex-1" onClick={onClose} />
 
       {/* Native Mobile Bottom Sheet Container */}
       <div className="w-full max-w-lg mx-auto bg-white rounded-t-[28px] shadow-2xl border-t border-slate-200/80 flex flex-col max-h-[85vh] sm:max-h-[88vh] overflow-hidden transform transition-transform animate-slide-up">
@@ -277,9 +241,7 @@ export default function FloodActionsModal({
         <div className="px-5 pt-2 pb-3 flex items-start justify-between border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 shadow-sm">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
-                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round"></path>
-              </svg>
+              <AlertTriangle className="w-5 h-5 text-blue-600" />
             </div>
             <div>
               <h2 className="text-base font-extrabold text-slate-900 leading-tight">Flood Actions</h2>
@@ -297,7 +259,7 @@ export default function FloodActionsModal({
           </button>
         </div>
 
-        {/* Touch-Friendly Segmented Dual Tab Switcher */}
+        {/* Segmented Dual Tab Switcher */}
         <div className="px-5 pt-3 pb-2 bg-slate-50/50">
           <div className="grid grid-cols-2 p-1 bg-slate-200/70 rounded-xl text-xs font-semibold">
             <button
@@ -310,9 +272,7 @@ export default function FloodActionsModal({
               onClick={() => setActiveTab('report')}
               type="button"
             >
-              <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
-                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round"></path>
-              </svg>
+              <AlertTriangle className="w-3.5 h-3.5 text-blue-600" />
               <span>Report Flood</span>
             </button>
             <button
@@ -342,129 +302,94 @@ export default function FloodActionsModal({
         <div className="px-5 py-3.5 overflow-y-auto space-y-4 flex-1">
           {/* TAB 1 CONTENT: Report Flood */}
           {activeTab === 'report' && (
-            <div className="space-y-3.5" id="tab-content-report">
-              {/* Compact GPS Status Card */}
-              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between shadow-2xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                    <MapPin className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-extrabold text-slate-800 tracking-wider uppercase">
-                        GPS Acquired
-                      </span>
-                      <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full">
-                        ±6m accuracy
-                      </span>
-                    </div>
-                    <p className="text-[11px] font-mono text-slate-700 font-medium mt-0.5 leading-none">
-                      {displayLat}° N, {displayLng}° E{' '}
-                      <span className="font-sans text-slate-400 font-normal">(Indraprastha)</span>
-                    </p>
-                  </div>
-                </div>
-                <button
-                  className="p-1.5 text-slate-400 hover:text-slate-700 active:rotate-180 transition-transform cursor-pointer"
-                  title="Refresh GPS"
-                  type="button"
-                  onClick={onRefreshGPS}
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-              </div>
+            <div className="space-y-4" id="tab-content-report">
+             
 
-              {/* Evidence & Quick Input: Two side-by-side touch cards */}
+              {/* Photo Evidence Section (Add Photo) */}
               <div>
                 <span className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">
-                  Evidence &amp; Quick Input
+                  Photo Evidence
                 </span>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {/* Hidden File Input */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={handlePhotoSelect}
-                  />
+                {/* Hidden File Input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handlePhotoSelect}
+                />
 
-                  {/* Add Street Photo */}
+                {photoPreview ? (
+                  <div className="relative border-2 border-blue-500 rounded-2xl overflow-hidden bg-slate-900 group">
+                    <img
+                      src={photoPreview}
+                      alt="Uploaded flood evidence"
+                      className="w-full h-44 object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex items-end justify-between p-3">
+                      <span className="text-xs font-bold text-white truncate max-w-[200px]">
+                        {selectedFile?.name}
+                      </span>
+                      <button
+                        onClick={clearPhoto}
+                        type="button"
+                        className="p-1.5 bg-red-600/90 hover:bg-red-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-md transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                   <button
-                    className={`border border-dashed ${
-                      selectedFile ? 'border-blue-500 bg-blue-50/50' : 'border-slate-300 bg-slate-50/60'
-                    } hover:border-blue-500 active:bg-blue-50/50 rounded-xl p-3 text-center flex flex-col items-center justify-center gap-1 transition-all group cursor-pointer`}
+                    className="w-full border-2 border-dashed border-slate-300 hover:border-blue-500 active:bg-blue-50/40 rounded-2xl p-5 text-center flex flex-col items-center justify-center gap-1.5 bg-slate-50/60 transition-all cursor-pointer group"
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    <div className="w-10 h-10 rounded-full bg-white shadow-sm border border-slate-200 group-hover:border-blue-400 flex items-center justify-center text-slate-600 group-hover:text-blue-600 transition-colors">
-                      {photoPreview ? (
-                        <img src={photoPreview} alt="Preview" className="w-full h-full object-cover rounded-full" />
-                      ) : (
-                        <Camera className="w-5 h-5" />
-                      )}
+                    <div className="w-12 h-12 rounded-full bg-white shadow-sm border border-slate-200 group-hover:border-blue-400 flex items-center justify-center text-slate-600 group-hover:text-blue-600 transition-colors">
+                      <Camera className="w-6 h-6" />
                     </div>
-                    <span className="text-xs font-bold text-slate-800 mt-0.5">
-                      {selectedFile ? 'Photo Attached' : 'Add Photo'}
-                    </span>
-                    <span className="text-[9px] text-slate-400">
-                      {selectedFile ? selectedFile.name.slice(0, 14) + '...' : 'Camera / Gallery'}
-                    </span>
+                    <span className="text-xs font-bold text-slate-800 mt-1">Add Photo</span>
+                    <span className="text-[10px] text-slate-400">Camera / Gallery</span>
                   </button>
-
-                  {/* Voice Dictation */}
-                  <button
-                    className={`border border-dashed ${
-                      isListening ? 'border-red-500 bg-red-50/50' : 'border-slate-300 bg-slate-50/60'
-                    } hover:border-blue-500 active:bg-blue-50/50 rounded-xl p-3 text-center flex flex-col items-center justify-center gap-1 transition-all group cursor-pointer`}
-                    type="button"
-                    onClick={toggleVoice}
-                  >
-                    <div
-                      className={`w-10 h-10 rounded-full shadow-sm border flex items-center justify-center transition-colors ${
-                        isListening
-                          ? 'bg-red-500 text-white border-red-600 animate-pulse'
-                          : 'bg-white border-slate-200 text-slate-600 group-hover:border-blue-400 group-hover:text-blue-600'
-                      }`}
-                    >
-                      {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                    </div>
-                    <span className="text-xs font-bold text-slate-800 mt-0.5">
-                      {isListening ? 'Listening...' : 'Voice Dictation'}
-                    </span>
-                    <span className="text-[9px] text-slate-400">
-                      {isListening ? 'Tap to pause' : 'Tap to record'}
-                    </span>
-                  </button>
-                </div>
+                )}
               </div>
 
-              {/* Notes & Landmarks (Optional) */}
+              {/* Touch-Friendly Severity Rating Selector */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label
-                    className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider"
-                    htmlFor="flood-notes"
-                  >
-                    Notes &amp; Landmarks (Optional)
-                  </label>
-                  <span className="text-[9px] text-slate-400 font-mono">
-                    {notes.length} / 280
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                    Severity Rating
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-500">
+                    Level {severityRating}/5
                   </span>
                 </div>
-                <textarea
-                  className="w-full text-xs rounded-xl border-slate-200 focus:border-blue-500 focus:ring-blue-500 p-2.5 placeholder:text-slate-400 text-slate-800 bg-slate-50/50 resize-none border"
-                  id="flood-notes"
-                  placeholder="Mention cross streets, nearby landmarks, or stranded vehicles..."
-                  rows={2}
-                  maxLength={280}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Transmitted directly to local civic responders.
-                </p>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {severityLevels.map((lvl) => {
+                    const isSelected = severityRating === lvl.value;
+                    return (
+                      <button
+                        key={lvl.value}
+                        type="button"
+                        onClick={() => setSeverityRating(lvl.value)}
+                        className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-2 border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
+                            : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <span className={`w-2 h-2 rounded-full ${lvl.color}`} />
+                          <span className="text-xs font-extrabold">{lvl.value}</span>
+                        </div>
+                        <span className="text-[10px] font-bold leading-tight">{lvl.label}</span>
+                        <span className="text-[9px] text-slate-400">{lvl.depth}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -475,26 +400,26 @@ export default function FloodActionsModal({
               {/* Place Label Chips */}
               <div>
                 <span className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Place Label
+                  PLACE LABEL
                 </span>
                 <div className="grid grid-cols-4 gap-1.5">
                   <button
                     className={`py-2 px-1.5 rounded-xl border flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       selectedLabelPreset === 'Home'
-                        ? 'border-2 border-blue-600 bg-blue-50/70 text-blue-700'
+                        ? 'border-2 border-blue-600 bg-blue-50/70 text-blue-700 font-bold'
                         : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
                     }`}
                     type="button"
                     onClick={() => setSelectedLabelPreset('Home')}
                   >
                     <Home className="w-4 h-4 stroke-current" />
-                    <span className="text-[11px] font-bold">Home</span>
+                    <span className="text-[11px] font-medium">Home</span>
                   </button>
 
                   <button
                     className={`py-2 px-1.5 rounded-xl border flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       selectedLabelPreset === 'Work'
-                        ? 'border-2 border-blue-600 bg-blue-50/70 text-blue-700'
+                        ? 'border-2 border-blue-600 bg-blue-50/70 text-blue-700 font-bold'
                         : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
                     }`}
                     type="button"
@@ -507,7 +432,7 @@ export default function FloodActionsModal({
                   <button
                     className={`py-2 px-1.5 rounded-xl border flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       selectedLabelPreset === 'School'
-                        ? 'border-2 border-blue-600 bg-blue-50/70 text-blue-700'
+                        ? 'border-2 border-blue-600 bg-blue-50/70 text-blue-700 font-bold'
                         : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
                     }`}
                     type="button"
@@ -520,7 +445,7 @@ export default function FloodActionsModal({
                   <button
                     className={`py-2 px-1.5 rounded-xl border flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       selectedLabelPreset === 'Custom'
-                        ? 'border-2 border-blue-600 bg-blue-50/70 text-blue-700'
+                        ? 'border-2 border-blue-600 bg-blue-50/70 text-blue-700 font-bold'
                         : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
                     }`}
                     type="button"
@@ -535,7 +460,7 @@ export default function FloodActionsModal({
                   <div className="mt-2">
                     <input
                       type="text"
-                      className="w-full text-xs rounded-xl border border-slate-200 p-2 text-slate-800 bg-slate-50/60 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full text-xs rounded-xl border border-slate-200 p-2.5 text-slate-800 bg-slate-50/60 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="e.g. Grandma's House, Gym, Metro Station..."
                       value={customLabel}
                       onChange={(e) => setCustomLabel(e.target.value)}
@@ -548,14 +473,14 @@ export default function FloodActionsModal({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
-                    Coordinates (GPS)
+                    COORDINATES (GPS)
                   </span>
                   <button
                     className="text-[11px] text-blue-600 font-bold flex items-center gap-1 cursor-pointer"
                     type="button"
                     onClick={onSelectOnMap}
                   >
-                    <Crosshair className="w-3 h-3 stroke-current" />
+                    <Crosshair className="w-3.5 h-3.5 stroke-current" />
                     <span>Select on Map</span>
                   </button>
                 </div>
@@ -584,7 +509,7 @@ export default function FloodActionsModal({
               {/* Alert Trigger Threshold */}
               <div>
                 <span className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Alert Trigger Threshold
+                  ALERT TRIGGER THRESHOLD
                 </span>
                 <div className="grid grid-cols-2 gap-2">
                   <div
@@ -653,7 +578,7 @@ export default function FloodActionsModal({
                 </>
               ) : (
                 <>
-                  <Send className="w-3.5 h-3.5 rotate-45 -mt-0.5" />
+                  <Send className="w-3.5 h-3.5" />
                   <span>Submit Report</span>
                 </>
               )}

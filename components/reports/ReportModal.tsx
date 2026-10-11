@@ -42,49 +42,53 @@ export default function ReportModal({ isOpen, onClose, lat, lng, onReportSubmitt
   };
 
   const handleSubmit = async () => {
-    if (!file || severity === 0) return;
+    // 1. Only block if severity is 0. Photo is now optional.
+    if (severity === 0) return;
     setLoading(true);
 
     try {
-      // 1. Get AWS S3 Presigned URL (POST with fallback)
-      const filename = file.name || `hazard-${Date.now()}.jpg`;
-      const contentType = file.type || 'image/jpeg';
+      let finalS3Key = null;
 
-      const urlRes = await fetch('/api/reports/presigned-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, contentType }),
-      });
+      // 2. Only upload to S3 if a file was selected
+      if (file) {
+        const filename = file.name || `hazard-${Date.now()}.jpg`;
+        const contentType = file.type || 'image/jpeg';
 
-      if (!urlRes.ok) {
-        throw new Error('Failed to obtain presigned upload URL');
+        const urlRes = await fetch('/api/reports/presigned-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename, contentType }),
+        });
+
+        if (!urlRes.ok) {
+          throw new Error('Failed to obtain presigned upload URL');
+        }
+
+        const { uploadUrl, key, fileKey } = await urlRes.json();
+        finalS3Key = fileKey || key;
+
+        const uploadRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': contentType },
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error('Failed to upload image directly to S3');
+        }
       }
 
-      const { uploadUrl, fileKey, key } = await urlRes.json();
-      const s3Key = fileKey || key;
-
-      // 2. Upload photo directly to Amazon S3
-      const uploadRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': contentType },
-      });
-
-      if (!uploadRes.ok) {
-        throw new Error('Failed to upload image directly to S3 storage');
-      }
-
-      // 3. Trigger Bedrock AI Analysis & Store Report in RDS
+      // 3. Submit to backend (s3Key might be null, backend handles bypassing AI)
       const submitRes = await fetch('/api/reports/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          latitude: lat,
-          longitude: lng,
+          s3Key: finalS3Key,
+          s3_image_key: finalS3Key,
           lat,
           lng,
-          s3_image_key: s3Key,
-          s3Key,
+          latitude: lat,
+          longitude: lng,
           userSeverityRating: severity,
           depth_estimate: `Severity Level ${severity}/5`,
           description: `Citizen Severity Rating: ${severity}/5`,
@@ -92,15 +96,17 @@ export default function ReportModal({ isOpen, onClose, lat, lng, onReportSubmitt
       });
 
       if (!submitRes.ok) {
-        throw new Error('Failed to process hazard report on server');
+        throw new Error('Failed to submit report to server');
       }
 
       const resData = await submitRes.json();
-      setAiResult(resData.ai_analysis || resData);
+
+      // Show success screen (fallback to manual_only if no AI analysis was returned)
+      setAiResult(resData.ai_analysis || { manual_only: true });
       onReportSubmitted?.();
     } catch (error) {
       console.error('Upload failed', error);
-      alert('Failed to submit report. Please verify connection and try again.');
+      alert('Failed to submit report. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -122,14 +128,16 @@ export default function ReportModal({ isOpen, onClose, lat, lng, onReportSubmitt
           </button>
         </div>
 
-        {/* Content Body */}
+        {/* Modal Body */}
         <div className="p-6 flex-1 overflow-y-auto">
           {!aiResult ? (
             <div className="space-y-6">
-              {/* CAMERA CAPTURE (Rear Camera Forced) */}
+              {/* CAMERA CAPTURE (Optional) */}
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-sm font-bold text-slate-700">1. Visual Evidence</h3>
+                  <h3 className="text-sm font-bold text-slate-700">
+                    1. Visual Evidence <span className="text-slate-400 font-normal">(Optional)</span>
+                  </h3>
                   {preview && (
                     <button
                       type="button"
@@ -139,20 +147,20 @@ export default function ReportModal({ isOpen, onClose, lat, lng, onReportSubmitt
                       }}
                       className="text-xs text-red-600 hover:underline font-semibold cursor-pointer"
                     >
-                      Retake
+                      Remove Photo
                     </button>
                   )}
                 </div>
-                <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50 active:bg-slate-100 hover:bg-slate-100 cursor-pointer transition-colors relative overflow-hidden">
+                <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50 active:bg-slate-100 hover:bg-slate-100 cursor-pointer transition-colors relative overflow-hidden">
                   {preview ? (
                     <img src={preview} alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
                   ) : (
                     <div className="flex flex-col items-center justify-center">
-                      <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-3">
-                        <Camera className="w-7 h-7" />
+                      <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-2">
+                        <Camera className="w-6 h-6" />
                       </div>
-                      <p className="font-bold text-slate-700">Tap to open camera</p>
-                      <p className="text-xs text-slate-400 mt-1">Rear camera opens automatically</p>
+                      <p className="font-bold text-slate-700 text-sm">Tap to open camera</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Rear camera opens automatically</p>
                     </div>
                   )}
                   {/* capture="environment" FORCES the rear camera on mobile */}
@@ -168,7 +176,9 @@ export default function ReportModal({ isOpen, onClose, lat, lng, onReportSubmitt
 
               {/* 1-5 SEVERITY RATING */}
               <div>
-                <h3 className="text-sm font-bold text-slate-700 mb-2">2. Severity Level</h3>
+                <h3 className="text-sm font-bold text-slate-700 mb-2">
+                  2. Severity Level <span className="text-red-500">*</span>
+                </h3>
                 <div className="flex justify-between items-center bg-slate-50 p-2 rounded-2xl border border-slate-200 gap-1.5">
                   {[1, 2, 3, 4, 5].map((level) => (
                     <button
@@ -195,16 +205,16 @@ export default function ReportModal({ isOpen, onClose, lat, lng, onReportSubmitt
                 </div>
               </div>
 
-              {/* SUBMIT BUTTON */}
+              {/* SUBMIT BUTTON - Only disabled if severity is 0 */}
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={!file || severity === 0 || loading}
+                disabled={severity === 0 || loading}
                 className="w-full flex items-center justify-center py-4 bg-slate-900 text-white rounded-2xl font-black text-base disabled:opacity-50 disabled:bg-slate-300 transition-all shadow-xl cursor-pointer active:scale-98"
               >
                 {loading ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin mr-2" /> Processing Analysis...
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" /> Processing...
                   </>
                 ) : (
                   <>
@@ -214,14 +224,14 @@ export default function ReportModal({ isOpen, onClose, lat, lng, onReportSubmitt
               </button>
             </div>
           ) : (
-            // AI SUCCESS SCREEN
+            // SUCCESS SCREEN
             <div className="space-y-4 text-center py-6">
               <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-in zoom-in-75 duration-300">
                 <CheckCircle className="w-10 h-10" />
               </div>
               <h3 className="text-2xl font-black text-slate-800">Report Sent!</h3>
               <p className="text-slate-500 mb-6 text-sm">
-                Your report has been received, verified via Bedrock AI, and mapped to the community alert radar.
+                Your report has been logged and added to the community map.
               </p>
 
               <button
