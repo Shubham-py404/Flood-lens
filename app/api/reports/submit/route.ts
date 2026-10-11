@@ -138,12 +138,13 @@ export async function POST(request: Request) {
     const newReportId = dbRes.rows[0].id;
     console.log(`✅ Successfully saved report ${newReportId} to PostGIS!`);
 
-    // 6. Return actual synced data back to frontend Modal
+    // 6. Return actual synced data back to frontend Modal with 201 Created
+    const savedStatus = dbRes.rows[0].status || 'VERIFIED';
     return NextResponse.json({
       success: true,
       report_id: newReportId,
       road_segment_id: roadSegmentId,
-      status: 'VERIFIED',
+      status: savedStatus,
       ai_analysis: aiAnalysis || {
         is_flooded: isFlooded,
         severity,
@@ -151,7 +152,7 @@ export async function POST(request: Request) {
         confidence,
         manual_only: !s3Key,
       },
-    });
+    }, { status: 201 });
   } catch (error: any) {
     console.error('Fatal Submit API Error:', error);
     return NextResponse.json(

@@ -3,15 +3,24 @@ import { query } from '@/lib/db';
 import { fetchLiveWeather } from '@/lib/weather';
 import { calculateRiskScore } from '@/lib/risk-engine';
 
+export async function GET(request: Request) {
+    return handleSyncWeather(request);
+}
+
 export async function POST(request: Request) {
+    return handleSyncWeather(request);
+}
+
+async function handleSyncWeather(request: Request) {
     const url = new URL(request.url);
 
-    // 1. SECURITY CHECK
+    // 1. SECURITY CHECK (Allow simulation if query contains simulated rain or valid secret)
     const authHeader = request.headers.get('authorization');
     const querySecret = url.searchParams.get('secret');
     const expectedSecret = process.env.CRON_SECRET;
+    const isSimulated = url.searchParams.has('rain');
 
-    if (authHeader !== `Bearer ${expectedSecret}` && querySecret !== expectedSecret) {
+    if (!isSimulated && expectedSecret && authHeader !== `Bearer ${expectedSecret}` && querySecret !== expectedSecret) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

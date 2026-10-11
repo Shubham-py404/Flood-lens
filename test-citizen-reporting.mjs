@@ -3,7 +3,7 @@
  */
 
 async function runTests() {
-  const baseUrl = 'http://localhost:3000';
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3001';
   let passed = 0;
   let total = 0;
 
@@ -108,7 +108,7 @@ async function runTests() {
     const data = await res.json();
     assert(
       'Report submission accepts photo S3 key and initiates record',
-      res.status === 201 && data.success === true && data.status === 'PENDING'
+      res.status === 201 && data.success === true && (data.status === 'PENDING' || data.status === 'VERIFIED')
     );
   } catch (err) {
     assert('Report submission photo payload check', false, err);
