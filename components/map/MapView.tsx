@@ -34,6 +34,7 @@ export default function MapView() {
   const savedPlaceMarkers = useRef<maplibregl.Marker[]>([]);
 
   const [userLoc, setUserLoc] = useState<{ lng: number; lat: number } | null>(null);
+  const [gpsDebugMsg, setGpsDebugMsg] = useState<string | null>('Initializing GPS...');
   const [selectedPinCoords, setSelectedPinCoords] = useState<{ lng: number; lat: number } | null>(null);
   const [selectedRoad, setSelectedRoad] = useState<any | null>(null);
 
@@ -126,15 +127,18 @@ export default function MapView() {
   // RE-CENTER FUNCTION (Tied to a direct User Gesture)
   const flyToUser = () => {
     if (!('geolocation' in navigator)) {
-      alert('Geolocation is not supported by this browser.');
+      setGpsDebugMsg('Geolocation is not supported by this browser.');
       return;
     }
+
+    setGpsDebugMsg('Acquiring GPS fix...');
 
     // Force a fresh GPS request on user click
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const { longitude, latitude } = pos.coords;
+        const { longitude, latitude, accuracy } = pos.coords;
         setUserLoc({ lng: longitude, lat: latitude });
+        setGpsDebugMsg(`GPS Lock: ${Math.round(accuracy)}m accuracy`);
 
         if (map.current) {
           map.current.flyTo({ center: [longitude, latitude], zoom: 17, essential: true });
@@ -151,9 +155,21 @@ export default function MapView() {
           }
         }
       },
-      (err) => {
-        console.warn('GPS Button Error:', err);
-        alert("Please allow location access in your phone's browser settings to find your location.");
+      (error) => {
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            setGpsDebugMsg('Error: User denied Geolocation.');
+            break;
+          case error.POSITION_UNAVAILABLE:
+            setGpsDebugMsg('Error: Location unavailable (GPS weak/off).');
+            break;
+          case error.TIMEOUT:
+            setGpsDebugMsg('Error: GPS request timed out.');
+            break;
+          default:
+            setGpsDebugMsg(`Error: ${error.message}`);
+        }
+        console.warn('GPS Button Error:', error);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
@@ -282,25 +298,48 @@ export default function MapView() {
 
       // GET INITIAL GPS
       if ('geolocation' in navigator) {
+        const gpsOptions = {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        };
+
         navigator.geolocation.watchPosition(
           (pos) => {
-            const { longitude, latitude } = pos.coords;
+            const { latitude, longitude, accuracy } = pos.coords;
             setUserLoc({ lng: longitude, lat: latitude });
+            setGpsDebugMsg(`GPS Lock: ${Math.round(accuracy)}m accuracy`);
 
             if (!userMarker.current && map.current) {
               const dot = document.createElement('div');
               dot.className =
-                'w-4 h-4 bg-blue-600 border-2 border-white rounded-full shadow-[0_0_15px_rgba(37,99,235,0.8)]';
+                'w-5 h-5 bg-blue-500 border-2 border-white rounded-full shadow-[0_0_20px_rgba(59,130,246,0.8)]';
               userMarker.current = new maplibregl.Marker({ element: dot })
                 .setLngLat([longitude, latitude])
                 .addTo(map.current);
-            } else {
-              userMarker.current?.setLngLat([longitude, latitude]);
+            } else if (userMarker.current) {
+              userMarker.current.setLngLat([longitude, latitude]);
             }
           },
-          (err) => console.warn('GPS:', err),
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+          (error) => {
+            switch (error.code) {
+              case error.PERMISSION_DENIED:
+                setGpsDebugMsg('Error: User denied Geolocation.');
+                break;
+              case error.POSITION_UNAVAILABLE:
+                setGpsDebugMsg('Error: Location unavailable (GPS weak/off).');
+                break;
+              case error.TIMEOUT:
+                setGpsDebugMsg('Error: GPS request timed out.');
+                break;
+              default:
+                setGpsDebugMsg(`Error: ${error.message}`);
+            }
+          },
+          gpsOptions
         );
+      } else {
+        setGpsDebugMsg('Geolocation is not supported by this browser.');
       }
 
       // ADD POSTGIS SOURCES
@@ -495,6 +534,30 @@ export default function MapView() {
           </button>
         </div>
       </div>
+
+      {/* On-Screen GPS Debugger Pill */}
+      {gpsDebugMsg && (
+        <div className="absolute top-18 left-4 right-4 z-30 max-w-sm mx-auto pointer-events-auto animate-in fade-in duration-200">
+          <div
+            className={`p-2 rounded-xl text-xs font-bold text-center border shadow-md backdrop-blur-md flex items-center justify-between gap-2 ${
+              gpsDebugMsg.includes('Error')
+                ? 'bg-red-500/95 text-white border-red-600 shadow-red-950/20'
+                : gpsDebugMsg.includes('Lock')
+                ? 'bg-emerald-600/95 text-white border-emerald-700 shadow-emerald-950/20'
+                : 'bg-slate-900/95 text-slate-100 border-slate-700 shadow-slate-950/20'
+            }`}
+          >
+            <span className="truncate flex-1">{gpsDebugMsg}</span>
+            <button
+              onClick={() => setGpsDebugMsg(null)}
+              className="text-white/70 hover:text-white text-xs cursor-pointer px-1"
+              title="Dismiss GPS status"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Community Radar Proximity Alert Popup */}
       {nearbyAlert && (
