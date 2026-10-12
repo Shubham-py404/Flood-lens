@@ -7,9 +7,7 @@ import {
   Bot, 
   User, 
   Loader2, 
-  ShieldCheck, 
-  HelpCircle,
-  ExternalLink
+  ShieldCheck 
 } from 'lucide-react';
 import { AssistantQueryResponse } from '@/types/api';
 
@@ -24,6 +22,8 @@ interface Message {
 interface AskAIViewProps {
   userCoords: { lat: number; lng: number } | null;
 }
+
+let globalMessageSeq = 0;
 
 export default function AskAIView({ userCoords }: AskAIViewProps) {
   const [messages, setMessages] = useState<Message[]>([
@@ -46,8 +46,10 @@ export default function AskAIView({ userCoords }: AskAIViewProps) {
     const textToSend = queryText || input;
     if (!textToSend.trim() || isLoading) return;
 
+    globalMessageSeq += 1;
+    const userMsgId = `usr-${globalMessageSeq}`;
     const userMsg: Message = {
-      id: `usr-${Date.now()}`,
+      id: userMsgId,
       sender: 'user',
       text: textToSend,
     };
@@ -70,8 +72,10 @@ export default function AskAIView({ userCoords }: AskAIViewProps) {
       if (!res.ok) throw new Error('Query failed');
       const data: AssistantQueryResponse = await res.json();
 
+      globalMessageSeq += 1;
+      const assistantMsgId = `ast-${globalMessageSeq}`;
       const assistantMsg: Message = {
-        id: `ast-${Date.now()}`,
+        id: assistantMsgId,
         sender: 'assistant',
         text: data.answer,
         citations: data.citations,

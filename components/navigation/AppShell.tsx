@@ -7,12 +7,7 @@ import {
   Navigation, 
   Camera, 
   Bookmark, 
-  Sparkles, 
-  Menu, 
-  X,
-  Bell,
-  Layers,
-  ChevronRight
+  Sparkles
 } from 'lucide-react';
 import MapView from '../map/MapView';
 import DailyPulseView from '../views/DailyPulseView';
@@ -96,60 +91,6 @@ export default function AppShell() {
   const [alerts, setAlerts] = useState<UserAlert[]>([]);
   const [isSafetyLoading, setIsSafetyLoading] = useState(false);
 
-  // Acquire device location on mount with GPS + IP fallback
-  const detectLocation = React.useCallback(async () => {
-    // 1. First attempt high-accuracy browser GPS
-    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = parseFloat(pos.coords.latitude.toFixed(4));
-          const lng = parseFloat(pos.coords.longitude.toFixed(4));
-          setUserCoords({ lat, lng });
-          fetchSummary(lat, lng);
-          fetchAir(lat, lng);
-          fetchNearby(lat, lng);
-        },
-        async (err) => {
-          console.warn('Browser GPS unavailable/blocked, attempting IP geolocation fallback:', err.message);
-          // 2. Fallback to server IP location if GPS prompt was dismissed, blocked, or timed out
-          try {
-            const ipRes = await fetch('/api/geo/ip');
-            if (ipRes.ok) {
-              const ipData = await ipRes.json();
-              if (ipData.lat && ipData.lng) {
-                const ipLat = parseFloat(Number(ipData.lat).toFixed(4));
-                const ipLng = parseFloat(Number(ipData.lng).toFixed(4));
-                setUserCoords({ lat: ipLat, lng: ipLng });
-                fetchSummary(ipLat, ipLng);
-                fetchAir(ipLat, ipLng);
-                fetchNearby(ipLat, ipLng);
-                return;
-              }
-            }
-          } catch (ipErr) {
-            console.error('IP geocoding fallback error:', ipErr);
-          }
-          // Final fallback
-          fetchSummary(28.6315, 77.2167);
-          fetchAir(28.6315, 77.2167);
-          fetchNearby(28.6315, 77.2167);
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
-      );
-    } else {
-      fetchSummary(28.6315, 77.2167);
-      fetchAir(28.6315, 77.2167);
-      fetchNearby(28.6315, 77.2167);
-    }
-  }, []);
-
-  useEffect(() => {
-    detectLocation();
-  }, [detectLocation]);
-
-  const lat = userCoords?.lat || 28.6315;
-  const lng = userCoords?.lng || 77.2167;
-
   // Fetch summary for given coordinates
   const fetchSummary = React.useCallback(async (latitude: number, longitude: number) => {
     try {
@@ -221,19 +162,86 @@ export default function AppShell() {
     }
   }, []);
 
+  // Acquire device location on mount with GPS + IP fallback
+  const detectLocation = React.useCallback(async () => {
+    // 1. First attempt high-accuracy browser GPS
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const detectedLat = parseFloat(pos.coords.latitude.toFixed(4));
+          const detectedLng = parseFloat(pos.coords.longitude.toFixed(4));
+          setUserCoords({ lat: detectedLat, lng: detectedLng });
+        },
+        async (err) => {
+          console.warn('Browser GPS unavailable/blocked, attempting IP geolocation fallback:', err.message);
+          // 2. Fallback to server IP location if GPS prompt was dismissed, blocked, or timed out
+          try {
+            const ipRes = await fetch('/api/geo/ip');
+            if (ipRes.ok) {
+              const ipData = await ipRes.json();
+              if (ipData.lat && ipData.lng) {
+                const ipLat = parseFloat(Number(ipData.lat).toFixed(4));
+                const ipLng = parseFloat(Number(ipData.lng).toFixed(4));
+                setUserCoords({ lat: ipLat, lng: ipLng });
+                return;
+              }
+            }
+          } catch (ipErr) {
+            console.error('IP geocoding fallback error:', ipErr);
+          }
+          // Final fallback
+          setUserCoords({ lat: 28.6315, lng: 77.2167 });
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      );
+    } else {
+      setUserCoords({ lat: 28.6315, lng: 77.2167 });
+    }
+  }, []);
+
+  useEffect(() => {
+    detectLocation();
+  }, [detectLocation]);
+
+  const lat = userCoords?.lat || 28.6315;
+  const lng = userCoords?.lng || 77.2167;
+
   // Automatically fetch live environmental data whenever user coordinates update
   useEffect(() => {
-    if (userCoords?.lat && userCoords?.lng) {
-      fetchSummary(userCoords.lat, userCoords.lng);
-      fetchAir(userCoords.lat, userCoords.lng);
-      fetchNearby(userCoords.lat, userCoords.lng);
-    }
-  }, [userCoords, fetchSummary, fetchAir, fetchNearby]);
+    fetchSummary(lat, lng);
+    fetchAir(lat, lng);
+    fetchNearby(lat, lng);
+  }, [lat, lng, fetchSummary, fetchAir, fetchNearby]);
 
   // Initial load for safety data
   useEffect(() => {
-    fetchSafetyData();
-  }, [fetchSafetyData]);
+    let isMounted = true;
+    const loadSafety = async () => {
+      try {
+        setIsSafetyLoading(true);
+        const [placesRes, alertsRes] = await Promise.all([
+          fetch('/api/user/saved-locations'),
+          fetch('/api/user/alerts'),
+        ]);
+        if (placesRes.ok && isMounted) {
+          const p = await placesRes.json();
+          setSavedLocations(p.saved_locations || []);
+        }
+        if (alertsRes.ok && isMounted) {
+          const a = await alertsRes.json();
+          setAlerts(a.alerts || []);
+        }
+      } catch (err) {
+        console.error('Safety data fetch error:', err);
+      } finally {
+        if (isMounted) setIsSafetyLoading(false);
+      }
+    };
+    loadSafety();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const navItems = [
     { id: 'home' as const, label: 'Pulse', icon: Home },

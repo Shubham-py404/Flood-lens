@@ -16,7 +16,7 @@ export default function ReportModal({ isOpen, onClose, lat, lng, onReportSubmitt
   const [preview, setPreview] = useState<string | null>(null);
   const [severity, setSeverity] = useState<number>(0);
   const [loading, setLoading] = useState(false);
-  const [aiResult, setAiResult] = useState<any | null>(null);
+  const [aiResult, setAiResult] = useState<Record<string, unknown> | null>(null);
 
   if (!isOpen) return null;
 

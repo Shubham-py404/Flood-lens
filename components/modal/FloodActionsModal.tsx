@@ -61,16 +61,22 @@ export default function FloodActionsModal({
   // Tab 2 (Save Place) State
   const [selectedLabelPreset, setSelectedLabelPreset] = useState<'Home' | 'Work' | 'School' | 'Custom'>('Home');
   const [customLabel, setCustomLabel] = useState('');
-  const [latInput, setLatInput] = useState('');
-  const [lngInput, setLngInput] = useState('');
+  const [latInput, setLatInput] = useState(() => currentCoords ? currentCoords.lat.toFixed(6) : '');
+  const [lngInput, setLngInput] = useState(() => currentCoords ? currentCoords.lng.toFixed(6) : '');
   const [alertThreshold, setAlertThreshold] = useState<RiskLevel>('HIGH');
   const [isSubmittingPlace, setIsSubmittingPlace] = useState(false);
   const [savePlaceSuccess, setSavePlaceSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Update coordinate inputs when coordinates change
+  const prevCoordsRef = React.useRef(currentCoords);
   useEffect(() => {
-    if (currentCoords) {
+    if (
+      currentCoords &&
+      (!prevCoordsRef.current ||
+        prevCoordsRef.current.lat !== currentCoords.lat ||
+        prevCoordsRef.current.lng !== currentCoords.lng)
+    ) {
+      prevCoordsRef.current = currentCoords;
       setLatInput(currentCoords.lat.toFixed(6));
       setLngInput(currentCoords.lng.toFixed(6));
     }
@@ -185,8 +191,9 @@ export default function FloodActionsModal({
         setSeverityRating(3);
         onClose();
       }, 1200);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Report submission failed.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Report submission failed.';
+      setErrorMessage(msg);
     } finally {
       setIsSubmittingReport(false);
     }
@@ -237,8 +244,9 @@ export default function FloodActionsModal({
         setSavePlaceSuccess(false);
         onClose();
       }, 1200);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Saving place failed.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Saving place failed.';
+      setErrorMessage(msg);
     } finally {
       setIsSubmittingPlace(false);
     }
