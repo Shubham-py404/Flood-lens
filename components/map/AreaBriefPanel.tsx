@@ -72,7 +72,7 @@ export default function AreaBriefPanel({
   onStartRoute,
   onClose,
 }: AreaBriefPanelProps) {
-  const [activeTab, setActiveTab] = useState<'routing' | 'reports'>('routing');
+  const [activeTab, setActiveTab] = useState<'routing' | 'directions' | 'reports'>('routing');
 
   return (
     <div className="absolute bottom-20 md:bottom-6 left-3 sm:left-4 right-3 sm:right-auto sm:w-[420px] z-40 pointer-events-auto animate-slide-up max-h-[70vh] sm:max-h-[78vh] flex flex-col glass-dock rounded-3xl shadow-2xl border border-[#e2e0d8] overflow-hidden">

@@ -1,7 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, MapPin, Loader2, X } from 'lucide-react';
+
+export interface SearchResultItem {
+  place_id: number | string;
+  name?: string;
+  display_name: string;
+  lat: string;
+  lon: string;
+}
 
 interface SearchBarProps {
   onLocationSelect: (lng: number, lat: number, displayName: string) => void;
@@ -15,107 +23,155 @@ export default function SearchBar({
   placeholder = 'Search street, area, or landmark...',
 }: SearchBarProps) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<SearchResultItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-
-    setLoading(true);
-    setIsOpen(true);
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          query
-        )}&limit=6&countrycodes=in`
-      );
-      const data = await res.json();
-      setResults(data);
-
-      // If user pressed Enter directly and there is at least one result, auto-select first
-      if (data && data.length > 0) {
-        handleSelect(data[0]);
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
       }
-    } catch (error) {
-      console.error('Geocoding error:', error);
-    } finally {
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Live auto-suggestions as user types with debounce
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/geo/search?q=${encodeURIComponent(trimmed)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setResults(Array.isArray(data) ? data : []);
+          setIsOpen(true);
+        } else {
+          setResults([]);
+        }
+      } catch (err) {
+        console.error('Location autocomplete search error:', err);
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const handleQueryChange = (val: string) => {
+    setQuery(val);
+    if (val.trim().length < 2) {
+      setResults([]);
+      setIsOpen(false);
       setLoading(false);
     }
   };
 
-  const handleSelect = (item: any) => {
+  const handleSelect = (item: SearchResultItem) => {
     const lat = parseFloat(item.lat);
     const lon = parseFloat(item.lon);
+    const primaryName = item.name || item.display_name?.split(',')[0] || query;
 
-    onLocationSelect(lon, lat, item.display_name || item.name);
-    setQuery(item.name || item.display_name.split(',')[0]);
+    onLocationSelect(lon, lat, item.display_name || item.name || primaryName);
+    setQuery(primaryName);
     setIsOpen(false);
   };
 
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (results.length > 0) {
+      handleSelect(results[0]);
+    }
+  };
+
   return (
-    <div className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative w-full ${className}`}>
       {/* Search Input Box */}
       <form
-        onSubmit={handleSearch}
-        className="relative bg-white/90 backdrop-blur-xl rounded-full shadow-md border border-[#e2e0d8] flex items-center px-4.5 py-3 sm:py-3.5 transition-all focus-within:ring-2 focus-within:ring-[#3a7d5c]/25 focus-within:border-[#3a7d5c] focus-within:bg-white"
+        onSubmit={handleFormSubmit}
+        className="relative bg-white/95 backdrop-blur-xl rounded-full shadow-lg border border-[#e2e0d8] flex items-center px-4 py-2.5 sm:py-3 transition-all focus-within:ring-2 focus-within:ring-[#244837]/30 focus-within:border-[#244837] focus-within:bg-white"
       >
-        <Search className="w-5 h-5 text-[#617469] mr-3 shrink-0" />
+        <Search className="w-5 h-5 text-[#405448] mr-2.5 shrink-0" />
         <input
           type="text"
           value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            if (e.target.value.length === 0) setIsOpen(false);
+          onChange={(e) => handleQueryChange(e.target.value)}
+          onFocus={() => {
+            if (results.length > 0 && query.trim().length >= 2) {
+              setIsOpen(true);
+            }
           }}
           placeholder={placeholder}
           className="flex-1 bg-transparent border-none outline-none text-[#1c2621] text-sm font-medium placeholder:text-[#87968e]"
         />
         {loading ? (
-          <Loader2 className="w-4.5 h-4.5 text-[#3a7d5c] animate-spin shrink-0 ml-2" />
+          <Loader2 className="w-4 h-4 text-[#244837] animate-spin shrink-0 ml-2" />
         ) : query ? (
           <button
             type="button"
             onClick={() => {
               setQuery('');
+              setResults([]);
               setIsOpen(false);
             }}
             className="p-1 hover:bg-[#edebe4] rounded-full text-[#77887e] ml-2 transition-colors cursor-pointer"
+            title="Clear search"
           >
             <X className="w-4 h-4" />
           </button>
         ) : null}
       </form>
 
-      {/* Autocomplete Dropdown */}
-      {isOpen && results.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl border border-[#e2e0d8] overflow-hidden z-50 animate-in fade-in duration-150">
-          <ul className="divide-y divide-[#edebe4]/70 max-h-56 overflow-y-auto no-scrollbar">
-            {results.map((item, idx) => (
-              <li
-                key={idx}
-                onClick={() => handleSelect(item)}
-                className="px-3.5 py-2.5 hover:bg-[#f6f5f0] cursor-pointer flex items-start gap-2.5 transition-colors text-left"
-              >
-                <MapPin className="w-3.5 h-3.5 text-[#3a7d5c] mt-0.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-[#1c2621] truncate">
-                    {item.name || item.display_name.split(',')[0]}
-                  </div>
-                  <div className="text-[10px] text-[#77887e] truncate mt-0.5">
-                    {item.display_name}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* Live Suggestions Dropdown */}
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white/98 backdrop-blur-2xl rounded-2xl shadow-2xl border border-[#e2e0d8] overflow-hidden z-50 animate-in fade-in duration-150 max-w-full">
+          {results.length > 0 ? (
+            <ul className="divide-y divide-[#edebe4]/70 max-h-64 sm:max-h-72 overflow-y-auto no-scrollbar">
+              {results.map((item, idx) => {
+                const parts = item.display_name?.split(',') || [];
+                const mainTitle = item.name || parts[0]?.trim();
+                const subTitle = parts.slice(1).join(',').trim();
 
-      {isOpen && results.length === 0 && !loading && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl rounded-2xl shadow-xl border border-[#e2e0d8] p-3 text-center text-xs text-[#77887e] z-50">
-          No locations found.
+                return (
+                  <li
+                    key={item.place_id || idx}
+                    onClick={() => handleSelect(item)}
+                    className="px-4 py-3 hover:bg-[#f4f3ef] active:bg-[#edebe4] cursor-pointer flex items-start gap-3 transition-colors text-left"
+                  >
+                    <div className="p-1.5 rounded-xl bg-[#e8efe9] text-[#244837] shrink-0 mt-0.5">
+                      <MapPin className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs sm:text-sm font-bold text-[#1c2621] truncate">
+                        {mainTitle}
+                      </div>
+                      {subTitle && (
+                        <div className="text-[11px] text-[#55695d] truncate mt-0.5 leading-normal">
+                          {subTitle}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : !loading && query.trim().length >= 2 ? (
+            <div className="p-4 text-center text-xs text-[#77887e]">
+              No matching locations found for &ldquo;{query}&rdquo;
+            </div>
+          ) : null}
         </div>
       )}
     </div>
