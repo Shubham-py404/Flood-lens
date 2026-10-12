@@ -110,28 +110,39 @@ export default function AreaBriefPanel({
       </div>
 
       {/* Mode Navigation Tabs */}
-      <div className="grid grid-cols-2 p-1.5 bg-[#f0eee6] border-b border-[#e2e0d8] text-xs font-bold text-[#617469]">
+      <div className="grid grid-cols-3 p-1.5 bg-[#f0eee6] border-b border-[#e2e0d8] text-xs font-bold text-[#617469]">
         <button
           onClick={() => setActiveTab('routing')}
-          className={`py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`py-2 px-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
             activeTab === 'routing'
               ? 'bg-white text-[#1c2621] shadow-xs'
               : 'hover:text-[#1c2621]'
           }`}
         >
           <Compass className="w-3.5 h-3.5 text-[#3a7d5c]" />
-          <span>Safe Routing Options</span>
+          <span className="truncate">Routes</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('directions')}
+          className={`py-2 px-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
+            activeTab === 'directions'
+              ? 'bg-white text-[#1c2621] shadow-xs'
+              : 'hover:text-[#1c2621]'
+          }`}
+        >
+          <Navigation className="w-3.5 h-3.5 text-[#0284c7]" />
+          <span className="truncate">Directions</span>
         </button>
         <button
           onClick={() => setActiveTab('reports')}
-          className={`py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`py-2 px-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
             activeTab === 'reports'
               ? 'bg-white text-[#1c2621] shadow-xs'
               : 'hover:text-[#1c2621]'
           }`}
         >
           <AlertTriangle className="w-3.5 h-3.5 text-[#b8623b]" />
-          <span>Area Reports ({nearbyHazards.length})</span>
+          <span className="truncate">Hazards ({nearbyHazards.length})</span>
         </button>
       </div>
 
