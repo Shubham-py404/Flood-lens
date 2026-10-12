@@ -41,6 +41,9 @@ export default function FloodActionsModal({
 }: FloodActionsModalProps) {
   const [activeTab, setActiveTab] = useState<'report' | 'save'>(initialTab);
 
+  // Error state
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   // Sync initial tab whenever opened
   useEffect(() => {
     if (isOpen) {
@@ -66,7 +69,6 @@ export default function FloodActionsModal({
   const [alertThreshold, setAlertThreshold] = useState<RiskLevel>('HIGH');
   const [isSubmittingPlace, setIsSubmittingPlace] = useState(false);
   const [savePlaceSuccess, setSavePlaceSuccess] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const prevCoordsRef = React.useRef(currentCoords);
   useEffect(() => {
