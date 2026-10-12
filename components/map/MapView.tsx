@@ -22,7 +22,7 @@ import {
 import SearchBar from './SearchBar';
 import SavedPlacesDrawer from '../places/SavedPlacesDrawer';
 import FloodActionsModal from '../modal/FloodActionsModal';
-import AreaBriefPanel, { RouteOption, LocationReportBrief } from './AreaBriefPanel';
+import AreaBriefPanel, { RouteOption, LocationReportBrief, VehicleMode } from './AreaBriefPanel';
 import { SavedLocation, UserAlert } from '@/types/db';
 
 if (typeof window !== 'undefined') {
@@ -153,6 +153,7 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
     hazards: LocationReportBrief[];
   } | null>(null);
   const [plannedRoutes, setPlannedRoutes] = useState<RouteOption[]>([]);
+  const [vehicleMode, setVehicleMode] = useState<VehicleMode>('car');
   const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
   const [selectedRouteType, setSelectedRouteType] = useState<string | null>(null);
   const [activeNavigationRoute, setActiveNavigationRoute] = useState<{
@@ -160,6 +161,7 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
     destinationName: string;
     destinationCoords: { lat: number; lng: number };
     hazards: LocationReportBrief[];
+    vehicleMode: VehicleMode;
   } | null>(null);
 
   // Sync external live AQI prop if available
@@ -909,28 +911,46 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
     });
 
     // 5. Compute Safe Routing Options (from user current GPS location to searched destination)
+    await fetchRoutesForDestination(lat, lng, vehicleMode);
+  };
+
+  // Helper: Fetch Safe Real-Road Routes for Destination & Vehicle Mode
+  const fetchRoutesForDestination = async (
+    destLat: number,
+    destLng: number,
+    mode: VehicleMode = vehicleMode
+  ) => {
     const originLat = userLoc?.lat || 28.6315;
     const originLng = userLoc?.lng || 77.2167;
 
     setIsLoadingRoutes(true);
     try {
       const routeRes = await fetch(
-        `/api/routes/plan?startLat=${originLat}&startLng=${originLng}&endLat=${lat}&endLng=${lng}`
+        `/api/routes/plan?startLat=${originLat}&startLng=${originLng}&endLat=${destLat}&endLng=${destLng}&mode=${mode}`
       );
       if (routeRes.ok) {
         const routeData = await routeRes.json();
         const routes: RouteOption[] = routeData.routes || [];
         setPlannedRoutes(routes);
 
-        // Auto-select Clean Air Corridor (Least AQI) by default
+        // Auto-select Clean Air Corridor (Least AQI) or currently selected type
         if (routes.length > 0) {
-          handleRouteSelect(routes[0]);
+          const matching = routes.find((r) => r.type === selectedRouteType) || routes[0];
+          handleRouteSelect(matching);
         }
       }
     } catch (e) {
       console.warn('Failed to calculate safe routes:', e);
     } finally {
       setIsLoadingRoutes(false);
+    }
+  };
+
+  // Handler: Change Vehicle Mode (Car, Bike, Cycle, Walk)
+  const handleVehicleModeChange = async (newMode: VehicleMode) => {
+    setVehicleMode(newMode);
+    if (searchedTarget) {
+      await fetchRoutesForDestination(searchedTarget.lat, searchedTarget.lng, newMode);
     }
   };
 
@@ -1027,6 +1047,7 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
       destinationName: searchedTarget.name,
       destinationCoords: { lat: searchedTarget.lat, lng: searchedTarget.lng },
       hazards: searchedTarget.hazards,
+      vehicleMode,
     });
 
     // Close the static search panel so the screen is uncluttered
@@ -1423,6 +1444,8 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
           routes={plannedRoutes}
           isLoadingRoutes={isLoadingRoutes}
           selectedRouteType={selectedRouteType}
+          vehicleMode={vehicleMode}
+          onVehicleModeChange={handleVehicleModeChange}
           onSelectRoute={handleRouteSelect}
           onClearRouting={clearRouteOverlay}
           onGetDirections={handleGetDirections}
@@ -1433,7 +1456,7 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
 
       {/* ACTIVE IN-APP LIVE NAVIGATION DASHBOARD */}
       {activeNavigationRoute && (() => {
-        // Compute live distance and dynamic ETA based on device current position
+        // Compute live distance and dynamic ETA based on device current position and selected vehicle mode
         const dest = activeNavigationRoute.destinationCoords;
         const currentLat = userLoc?.lat || 28.6315;
         const currentLng = userLoc?.lng || 77.2167;
@@ -1447,8 +1470,17 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
             Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const liveDistanceKm = parseFloat((6371 * c).toFixed(1));
-        // Average speed approx 25 km/h in city traffic
-        const liveEtaMin = Math.max(1, Math.round((liveDistanceKm / 25) * 60));
+        
+        // Calibrated speeds: Car ~28 km/h, Bike ~32 km/h (filtering through city traffic), Cycle ~14 km/h, Walk ~4.5 km/h
+        const modeSpeedKmH =
+          activeNavigationRoute.vehicleMode === 'walk'
+            ? 4.5
+            : activeNavigationRoute.vehicleMode === 'cycle'
+            ? 14
+            : activeNavigationRoute.vehicleMode === 'bike'
+            ? 32
+            : 26;
+        const liveEtaMin = Math.max(1, Math.round((liveDistanceKm / modeSpeedKmH) * 60));
 
         return (
           <div className="absolute top-16 sm:top-20 left-3 sm:left-4 right-3 sm:right-auto sm:w-[420px] z-40 pointer-events-auto animate-slide-up flex flex-col glass-dock rounded-3xl shadow-2xl border border-[#244837]/30 overflow-hidden">
@@ -1462,7 +1494,7 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                     <span className="text-[10px] font-black uppercase tracking-wider text-emerald-200">
-                      Live Guidance Active
+                      Live Guidance • {activeNavigationRoute.vehicleMode === 'walk' ? 'Walking' : activeNavigationRoute.vehicleMode === 'cycle' ? 'Cycling' : activeNavigationRoute.vehicleMode === 'bike' ? 'Motorbike' : 'Car'}
                     </span>
                   </div>
                   <h3 className="text-sm sm:text-base font-black truncate max-w-[220px]">

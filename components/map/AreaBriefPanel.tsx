@@ -12,8 +12,13 @@ import {
   Route as RouteIcon,
   CornerUpRight,
   LocateFixed,
-  Flag
+  Flag,
+  Car,
+  Bike as BikeIcon,
+  Footprints
 } from 'lucide-react';
+
+export type VehicleMode = 'car' | 'bike' | 'cycle' | 'walk';
 
 export interface RouteOption {
   type: 'least_aqi' | 'least_flood' | 'fastest';
@@ -51,6 +56,8 @@ interface AreaBriefPanelProps {
   routes: RouteOption[];
   isLoadingRoutes: boolean;
   selectedRouteType: string | null;
+  vehicleMode?: VehicleMode;
+  onVehicleModeChange?: (mode: VehicleMode) => void;
   onSelectRoute: (route: RouteOption) => void;
   onClearRouting: () => void;
   onGetDirections?: (route: RouteOption) => void;
@@ -66,6 +73,8 @@ export default function AreaBriefPanel({
   routes,
   isLoadingRoutes,
   selectedRouteType,
+  vehicleMode = 'car',
+  onVehicleModeChange,
   onSelectRoute,
   onClearRouting,
   onGetDirections,
@@ -174,13 +183,81 @@ export default function AreaBriefPanel({
         </button>
       </div>
 
+      {/* Vehicle Mode Selector (Car, Bike, Cycle, On Foot) */}
+      <div className="px-3.5 py-2.5 bg-[#f9f8f5] border-b border-[#e8e6dd] flex flex-col gap-1.5">
+        <div className="flex items-center justify-between text-[11px] font-bold text-[#617469]">
+          <span className="uppercase tracking-wider">Vehicle Type:</span>
+          <span className="text-[#244837] font-extrabold capitalize">
+            {vehicleMode === 'car' ? 'Car (Drive)' : vehicleMode === 'bike' ? 'Bike (Motorcycle)' : vehicleMode === 'cycle' ? 'Cycle (Bicycle)' : 'On Foot (Walk)'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#edeae1] rounded-2xl">
+          <button
+            type="button"
+            onClick={() => onVehicleModeChange?.('car')}
+            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all cursor-pointer text-[11px] font-bold ${
+              vehicleMode === 'car'
+                ? 'bg-[#244837] text-white shadow-sm ring-1 ring-[#244837]'
+                : 'text-[#53655b] hover:text-[#1c2621] hover:bg-white/60'
+            }`}
+            title="Car / Drive on standard roads"
+          >
+            <Car className="w-4 h-4 mb-0.5" />
+            <span className="leading-tight">Car</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onVehicleModeChange?.('bike')}
+            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all cursor-pointer text-[11px] font-bold ${
+              vehicleMode === 'bike'
+                ? 'bg-[#244837] text-white shadow-sm ring-1 ring-[#244837]'
+                : 'text-[#53655b] hover:text-[#1c2621] hover:bg-white/60'
+            }`}
+            title="Motorcycle / 2-Wheeler"
+          >
+            <BikeIcon className="w-4 h-4 mb-0.5" />
+            <span className="leading-tight">Bike</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onVehicleModeChange?.('cycle')}
+            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all cursor-pointer text-[11px] font-bold ${
+              vehicleMode === 'cycle'
+                ? 'bg-[#244837] text-white shadow-sm ring-1 ring-[#244837]'
+                : 'text-[#53655b] hover:text-[#1c2621] hover:bg-white/60'
+            }`}
+            title="Cycle / Bicycle"
+          >
+            <BikeIcon className="w-4 h-4 mb-0.5 text-emerald-500" />
+            <span className="leading-tight">Cycle</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onVehicleModeChange?.('walk')}
+            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all cursor-pointer text-[11px] font-bold ${
+              vehicleMode === 'walk'
+                ? 'bg-[#244837] text-white shadow-sm ring-1 ring-[#244837]'
+                : 'text-[#53655b] hover:text-[#1c2621] hover:bg-white/60'
+            }`}
+            title="Walking / On Foot paths"
+          >
+            <Footprints className="w-4 h-4 mb-0.5" />
+            <span className="leading-tight">On Foot</span>
+          </button>
+        </div>
+      </div>
+
       {/* Tab 1: Routing Options */}
       {activeTab === 'routing' && (
         <div className="p-4 overflow-y-auto space-y-3 max-h-[380px] no-scrollbar">
           {isLoadingRoutes ? (
             <div className="py-8 text-center text-[#77887e] space-y-2">
               <Compass className="w-6 h-6 animate-spin mx-auto text-[#3a7d5c]" />
-              <p className="text-xs font-semibold">Calculating Multi-Safety Trajectories...</p>
+              <p className="text-xs font-semibold">Calculating Real Road Trajectories...</p>
             </div>
           ) : routes.length > 0 ? (
             routes.map((route) => {
