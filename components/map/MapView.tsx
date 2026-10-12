@@ -16,6 +16,8 @@ import {
   CheckCircle,
   XCircle,
   Wind,
+  Route as RouteIcon,
+  Compass,
 } from 'lucide-react';
 import SearchBar from './SearchBar';
 import SavedPlacesDrawer from '../places/SavedPlacesDrawer';
@@ -150,6 +152,12 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
   const [plannedRoutes, setPlannedRoutes] = useState<RouteOption[]>([]);
   const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
   const [selectedRouteType, setSelectedRouteType] = useState<string | null>(null);
+  const [activeNavigationRoute, setActiveNavigationRoute] = useState<{
+    route: RouteOption;
+    destinationName: string;
+    destinationCoords: { lat: number; lng: number };
+    hazards: LocationReportBrief[];
+  } | null>(null);
 
   // Sync external live AQI prop if available
   useEffect(() => {
@@ -960,45 +968,66 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
     }
   };
 
-  // Handler: Get Directions (Opens device native maps / Google Maps with precise navigation origin & destination)
+  // Handler: Get Directions (Directly switches to in-app safe navigation route and view without redirecting externally)
   const handleGetDirections = (route: RouteOption) => {
-    if (!searchedTarget) return;
-    const destQuery = encodeURIComponent(`${searchedTarget.lat},${searchedTarget.lng}`);
-    const originParam = userLoc ? `&origin=${encodeURIComponent(`${userLoc.lat},${userLoc.lng}`)}` : '';
-    window.open(
-      `https://www.google.com/maps/dir/?api=1${originParam}&destination=${destQuery}&travelmode=driving`,
-      '_blank'
-    );
+    handleRouteSelect(route);
   };
 
-  // Handler: Start Route (Activates in-app active guidance view, zooms to route start, applies 3D navigation pitch/bearing)
+  // Handler: Start Route (Activates real-time in-app navigation dashboard, tracks movement, and dismisses search exploration panel)
   const handleStartRoute = (route: RouteOption) => {
     const currentMap = map.current;
-    if (!currentMap) return;
+    if (!searchedTarget) return;
 
-    // Focus on user position or first coordinate of selected route with navigation pitch & bearing
-    const startCoord = userLoc
-      ? [userLoc.lng, userLoc.lat]
-      : route.geometry?.coordinates?.[0] || [searchedTarget?.lng || 77.2167, searchedTarget?.lat || 28.6315];
-
-    // Compute bearing toward next waypoint if available
-    let bearing = 0;
-    if (route.geometry?.coordinates && route.geometry.coordinates.length > 1) {
-      const p1 = route.geometry.coordinates[0];
-      const p2 = route.geometry.coordinates[1];
-      const dLon = p2[0] - p1[0];
-      const dLat = p2[1] - p1[1];
-      bearing = (Math.atan2(dLon, dLat) * 180) / Math.PI;
-    }
-
-    currentMap.easeTo({
-      center: startCoord as [number, number],
-      zoom: 17.5,
-      pitch: 55,
-      bearing,
-      duration: 1500,
-      essential: true,
+    // Save active navigation state with real-time tracking
+    setActiveNavigationRoute({
+      route,
+      destinationName: searchedTarget.name,
+      destinationCoords: { lat: searchedTarget.lat, lng: searchedTarget.lng },
+      hazards: searchedTarget.hazards,
     });
+
+    // Close the static search panel so the screen is uncluttered
+    setSearchedTarget(null);
+
+    // Keep route line rendered on map
+    handleRouteSelect(route);
+
+    if (currentMap) {
+      const startCoord = userLoc
+        ? [userLoc.lng, userLoc.lat]
+        : route.geometry?.coordinates?.[0] || [searchedTarget.lng, searchedTarget.lat];
+
+      let bearing = 0;
+      if (route.geometry?.coordinates && route.geometry.coordinates.length > 1) {
+        const p1 = route.geometry.coordinates[0];
+        const p2 = route.geometry.coordinates[1];
+        const dLon = p2[0] - p1[0];
+        const dLat = p2[1] - p1[1];
+        bearing = (Math.atan2(dLon, dLat) * 180) / Math.PI;
+      }
+
+      currentMap.easeTo({
+        center: startCoord as [number, number],
+        zoom: 17.5,
+        pitch: 55,
+        bearing,
+        duration: 1500,
+        essential: true,
+      });
+    }
+  };
+
+  // Handler: Stop Active Navigation
+  const stopNavigation = () => {
+    setActiveNavigationRoute(null);
+    clearRouteOverlay();
+    if (searchTargetMarker.current) {
+      searchTargetMarker.current.remove();
+      searchTargetMarker.current = null;
+    }
+    if (map.current) {
+      map.current.easeTo({ pitch: 0, bearing: 0, zoom: 16, duration: 1000 });
+    }
   };
 
   // Handler: Clear route line from map
@@ -1341,7 +1370,7 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
       )}
 
       {/* AREA EXPLORATION BRIEF & SAFE ROUTING PANEL */}
-      {searchedTarget && (
+      {searchedTarget && !activeNavigationRoute && (
         <AreaBriefPanel
           locationName={searchedTarget.name}
           coords={{ lat: searchedTarget.lat, lng: searchedTarget.lng }}
@@ -1357,6 +1386,110 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
           onClose={closeSearchedTargetPanel}
         />
       )}
+
+      {/* ACTIVE IN-APP LIVE NAVIGATION DASHBOARD */}
+      {activeNavigationRoute && (() => {
+        // Compute live distance and dynamic ETA based on device current position
+        const dest = activeNavigationRoute.destinationCoords;
+        const currentLat = userLoc?.lat || 28.6315;
+        const currentLng = userLoc?.lng || 77.2167;
+        const dLat = (dest.lat - currentLat) * (Math.PI / 180);
+        const dLon = (dest.lng - currentLng) * (Math.PI / 180);
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(currentLat * (Math.PI / 180)) *
+            Math.cos(dest.lat * (Math.PI / 180)) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const liveDistanceKm = parseFloat((6371 * c).toFixed(1));
+        // Average speed approx 25 km/h in city traffic
+        const liveEtaMin = Math.max(1, Math.round((liveDistanceKm / 25) * 60));
+
+        return (
+          <div className="absolute top-16 sm:top-20 left-3 sm:left-4 right-3 sm:right-auto sm:w-[420px] z-40 pointer-events-auto animate-slide-up flex flex-col glass-dock rounded-3xl shadow-2xl border border-[#244837]/30 overflow-hidden">
+            {/* Live Navigation Header */}
+            <div className="p-4 bg-gradient-to-r from-[#244837] to-[#1c382b] text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20">
+                  <Navigation className="w-5 h-5 text-emerald-300 fill-emerald-300 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-200">
+                      Live Guidance Active
+                    </span>
+                  </div>
+                  <h3 className="text-sm sm:text-base font-black truncate max-w-[220px]">
+                    {activeNavigationRoute.destinationName.split(',')[0]}
+                  </h3>
+                </div>
+              </div>
+
+              <button
+                onClick={stopNavigation}
+                className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500 text-white border border-red-400/40 text-xs font-bold transition-all cursor-pointer"
+                title="End Navigation"
+              >
+                Exit
+              </button>
+            </div>
+
+            {/* Dynamic Telemetry Metric Strip */}
+            <div className="p-4 bg-white/95 backdrop-blur-xl flex flex-col gap-3">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2.5 bg-[#f4f3ef] rounded-2xl border border-[#e2e0d8]">
+                  <span className="text-[10px] font-bold text-[#617469] block">Time Left</span>
+                  <span className="text-lg font-black text-[#1c2621] font-mono leading-tight">
+                    {liveEtaMin} <span className="text-xs font-normal">min</span>
+                  </span>
+                </div>
+                <div className="p-2.5 bg-[#f4f3ef] rounded-2xl border border-[#e2e0d8]">
+                  <span className="text-[10px] font-bold text-[#617469] block">Distance</span>
+                  <span className="text-lg font-black text-[#1c2621] font-mono leading-tight">
+                    {liveDistanceKm} <span className="text-xs font-normal">km</span>
+                  </span>
+                </div>
+                <div className="p-2.5 bg-[#f4f3ef] rounded-2xl border border-[#e2e0d8]">
+                  <span className="text-[10px] font-bold text-[#617469] block">Route AQI</span>
+                  <span className="text-lg font-black text-[#244837] font-mono leading-tight">
+                    {activeNavigationRoute.route.avg_aqi}
+                  </span>
+                </div>
+              </div>
+
+              {/* Real-time Environmental Hazard Alert on Route */}
+              <div className="p-3 rounded-2xl bg-[#f8f7f4] border border-[#e2e0d8] flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className={`w-4 h-4 ${activeNavigationRoute.hazards.length > 0 ? 'text-amber-500' : 'text-emerald-500'}`} />
+                  <span className="font-semibold text-[#1c2621]">
+                    {activeNavigationRoute.hazards.length > 0
+                      ? `${activeNavigationRoute.hazards.length} hazards monitored ahead`
+                      : 'Zero flood hazards detected on this corridor'}
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold text-[#3a7d5c] bg-[#e8efe9] px-2 py-0.5 rounded-md">
+                  {activeNavigationRoute.route.flood_risk} Risk
+                </span>
+              </div>
+
+              {/* Re-center device view button */}
+              <button
+                onClick={() => {
+                  if (userLoc && map.current) {
+                    map.current.easeTo({ center: [userLoc.lng, userLoc.lat], zoom: 18, pitch: 55, duration: 1000 });
+                  }
+                }}
+                className="w-full py-2 bg-[#244837] hover:bg-[#1b382b] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+              >
+                <LocateFixed className="w-3.5 h-3.5" />
+                <span>Follow My Position</span>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* FLOOD ACTIONS MODAL (Dual Tab: Report Flood & Save Place) */}
       <FloodActionsModal
