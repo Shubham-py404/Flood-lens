@@ -94,23 +94,23 @@ export default function DailyPulseView({
             <div className="mt-4 flex items-baseline gap-3">
               <span 
                 className="text-4xl md:text-5xl font-black tracking-tight"
-                style={{ color: air_quality.indian_category_color || air_quality.categoryColor }}
+                style={{ color: air_quality.categoryColor || air_quality.indian_category_color }}
               >
-                {air_quality.indian_aqi || air_quality.aqi}
+                {air_quality.aqi}
               </span>
               <div className="flex flex-col">
                 <span 
                   className="text-xs font-extrabold px-2.5 py-0.5 rounded-lg inline-block border w-fit shadow-2xs"
                   style={{ 
-                    color: air_quality.indian_category_color || air_quality.categoryColor, 
-                    backgroundColor: `${air_quality.indian_category_color || air_quality.categoryColor}15`,
-                    borderColor: `${air_quality.indian_category_color || air_quality.categoryColor}35`
+                    color: air_quality.categoryColor || air_quality.indian_category_color, 
+                    backgroundColor: `${air_quality.categoryColor || air_quality.indian_category_color}15`,
+                    borderColor: `${air_quality.categoryColor || air_quality.indian_category_color}35`
                   }}
                 >
-                  {air_quality.indian_category || air_quality.category}
+                  {air_quality.category}
                 </span>
                 <span className="text-[10px] text-[#77887e] mt-1 font-mono">
-                  India NAQI ({air_quality.aqi} US-AQI)
+                  US EPA AQI {air_quality.indian_aqi ? `(India: ${air_quality.indian_aqi})` : ''}
                 </span>
               </div>
             </div>

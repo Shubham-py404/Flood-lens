@@ -323,7 +323,7 @@ export default function AppShell() {
           <MapView 
             targetLocation={mapTarget} 
             initialShowAqiLayer={showAqiHeatmap}
-            liveAqi={airData?.indian_aqi || airData?.aqi || null}
+            liveAqi={airData?.aqi ?? airData?.indian_aqi ?? null}
             initialUserCoords={userCoords}
           />
         </div>
@@ -354,12 +354,12 @@ export default function AppShell() {
               }}
               onViewOnMap={() => {
                 setShowAqiHeatmap(true);
-                const currentAqi = airData?.indian_aqi || airData?.aqi;
-                const currentCat = airData?.indian_category || airData?.category || 'Atmosphere';
+                const currentAqi = airData?.aqi ?? airData?.indian_aqi;
+                const currentCat = airData?.category ?? airData?.indian_category ?? 'Atmosphere';
                 setMapTarget({
                   lat: userCoords?.lat || 28.6315,
                   lng: userCoords?.lng || 77.2167,
-                  title: `Live AQI: ${currentAqi} (${currentCat})`,
+                  title: `Live US AQI: ${currentAqi} (${currentCat})`,
                 });
                 setActiveTab('map');
               }}

@@ -205,7 +205,7 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
         const res = await fetch(`/api/air-quality?lat=${lat}&lng=${lng}`);
         if (res.ok) {
           const data = await res.json();
-          const dynamicAqi = data.indian_aqi || data.aqi;
+          const dynamicAqi = data.aqi ?? data.indian_aqi;
           if (dynamicAqi !== undefined && dynamicAqi !== null) {
             setAqiData(dynamicAqi);
             return;
@@ -896,7 +896,7 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
       const aqiRes = await fetch(`/api/air-quality?lat=${lat}&lng=${lng}`);
       if (aqiRes.ok) {
         const aqData = await aqiRes.json();
-        targetAqi = aqData.indian_aqi || aqData.aqi || null;
+        targetAqi = aqData.aqi ?? aqData.indian_aqi ?? null;
       }
     } catch {
       // ignore

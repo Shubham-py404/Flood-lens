@@ -119,33 +119,33 @@ export default function AirQualityView({
         className="glass-panel rounded-3xl p-6 md:p-8 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6"
         style={{ 
           borderLeftWidth: '6px',
-          borderLeftColor: airData.indian_category_color || airData.categoryColor,
+          borderLeftColor: airData.categoryColor || airData.indian_category_color,
         }}
       >
         <div className="text-center md:text-left space-y-2 w-full md:w-auto">
           <span className="text-[10px] font-black uppercase tracking-widest text-[#55695d]">
-            Local Standard Atmospheric Index
+            US EPA Atmospheric Index (Live Station)
           </span>
           <div className="flex items-center justify-center md:justify-start gap-4">
             <span 
               className="text-6xl md:text-7xl font-black tracking-tight drop-shadow-xs"
-              style={{ color: airData.indian_category_color || airData.categoryColor }}
+              style={{ color: airData.categoryColor || airData.indian_category_color }}
             >
-              {airData.indian_aqi || airData.aqi}
+              {airData.aqi}
             </span>
             <div className="text-left">
               <span 
                 className="text-xs md:text-sm font-extrabold px-3 py-1 rounded-lg border inline-block shadow-xs"
                 style={{ 
-                  color: airData.indian_category_color || airData.categoryColor, 
-                  backgroundColor: `${airData.indian_category_color || airData.categoryColor}15`,
-                  borderColor: `${airData.indian_category_color || airData.categoryColor}35`
+                  color: airData.categoryColor || airData.indian_category_color, 
+                  backgroundColor: `${airData.categoryColor || airData.indian_category_color}15`,
+                  borderColor: `${airData.categoryColor || airData.indian_category_color}35`
                 }}
               >
-                {airData.indian_category || airData.category}
+                {airData.category}
               </span>
               <p className="text-[11px] text-[#617469] mt-1 font-mono">
-                India CPCB NAQI <span className="text-[#a8b3ac]">|</span> {airData.aqi} US-EPA
+                US-EPA AQI <span className="text-[#a8b3ac]">|</span> {airData.indian_aqi ? `India NAQI: ${airData.indian_aqi}` : 'Standard'}
               </p>
             </div>
           </div>
