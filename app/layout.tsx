@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FloodLens",
-  description: "Community flood intelligence — real-time hazard map powered by citizens",
+  title: "TerraPulse",
+  description: "TerraPulse — Real-time environmental intelligence, hazard reporting, and safe route navigation",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "FloodLens",
+    title: "TerraPulse",
     startupImage: [
       {
         url: "/icons/apple-touch-icon.png",

@@ -1,7 +1,7 @@
 {
-  "name": "FloodLens",
-  "short_name": "FloodLens",
-  "description": "Community flood intelligence — real-time hazard map powered by citizens",
+  "name": "TerraPulse",
+  "short_name": "TerraPulse",
+  "description": "TerraPulse — Real-time environmental intelligence, hazard reporting, and safe route navigation",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
@@ -65,7 +65,7 @@
       "sizes": "512x512",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "FloodLens hazard map"
+      "label": "TerraPulse environmental hazard map"
     }
   ]
 }
