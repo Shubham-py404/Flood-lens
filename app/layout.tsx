@@ -46,9 +46,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       {/* 100dvh fills the exact visible viewport on both iOS Safari and Android Chrome */}
-      <body className="w-full h-[100dvh] overflow-hidden bg-slate-900 font-sans relative">
+      <body className="w-full h-[100dvh] overflow-hidden bg-slate-900 font-sans relative" suppressHydrationWarning>
         {children}
       </body>
     </html>
