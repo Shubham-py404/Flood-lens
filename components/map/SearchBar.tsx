@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, Loader2, X } from 'lucide-react';
+import { Search, MapPin, Loader2, X, Navigation } from 'lucide-react';
 
 export interface SearchResultItem {
   place_id: number | string;
@@ -9,18 +9,21 @@ export interface SearchResultItem {
   display_name: string;
   lat: string;
   lon: string;
+  distance_km?: number;
 }
 
 interface SearchBarProps {
   onLocationSelect: (lng: number, lat: number, displayName: string) => void;
   className?: string;
   placeholder?: string;
+  userCoords?: { lat: number; lng: number } | null;
 }
 
 export default function SearchBar({
   onLocationSelect,
   className = '',
   placeholder = 'Search street, area, or landmark...',
+  userCoords,
 }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -41,7 +44,7 @@ export default function SearchBar({
     };
   }, []);
 
-  // Live auto-suggestions as user types with debounce
+  // Live auto-suggestions as user types with debounce and user coordinate bias
   useEffect(() => {
     const trimmed = query.trim();
     if (trimmed.length < 2) {
@@ -51,7 +54,11 @@ export default function SearchBar({
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/geo/search?q=${encodeURIComponent(trimmed)}`);
+        let url = `/api/geo/search?q=${encodeURIComponent(trimmed)}`;
+        if (userCoords && userCoords.lat && userCoords.lng) {
+          url += `&lat=${userCoords.lat}&lng=${userCoords.lng}`;
+        }
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
           setResults(Array.isArray(data) ? data : []);
@@ -68,7 +75,7 @@ export default function SearchBar({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, userCoords]);
 
   const handleQueryChange = (val: string) => {
     setQuery(val);
@@ -134,7 +141,7 @@ export default function SearchBar({
         ) : null}
       </form>
 
-      {/* Live Suggestions Dropdown */}
+      {/* Live Suggestions Dropdown Sorted Top to Bottom from Closest to Farthest */}
       {isOpen && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white/98 backdrop-blur-2xl rounded-2xl shadow-2xl border border-[#e2e0d8] overflow-hidden z-50 animate-in fade-in duration-150 max-w-full">
           {results.length > 0 ? (
@@ -144,25 +151,43 @@ export default function SearchBar({
                 const mainTitle = item.name || parts[0]?.trim();
                 const subTitle = parts.slice(1).join(',').trim();
 
+                // Format distance display
+                const distFormatted =
+                  item.distance_km !== undefined && item.distance_km < 9999
+                    ? item.distance_km < 1
+                      ? `${Math.round(item.distance_km * 1000)}m`
+                      : `${item.distance_km} km`
+                    : null;
+
                 return (
                   <li
                     key={item.place_id || idx}
                     onClick={() => handleSelect(item)}
-                    className="px-4 py-3 hover:bg-[#f4f3ef] active:bg-[#edebe4] cursor-pointer flex items-start gap-3 transition-colors text-left"
+                    className="px-4 py-3 hover:bg-[#f4f3ef] active:bg-[#edebe4] cursor-pointer flex items-center justify-between gap-3 transition-colors text-left"
                   >
-                    <div className="p-1.5 rounded-xl bg-[#e8efe9] text-[#244837] shrink-0 mt-0.5">
-                      <MapPin className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs sm:text-sm font-bold text-[#1c2621] truncate">
-                        {mainTitle}
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className="p-1.5 rounded-xl bg-[#e8efe9] text-[#244837] shrink-0 mt-0.5">
+                        <MapPin className="w-4 h-4" />
                       </div>
-                      {subTitle && (
-                        <div className="text-[11px] text-[#55695d] truncate mt-0.5 leading-normal">
-                          {subTitle}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs sm:text-sm font-bold text-[#1c2621] truncate">
+                          {mainTitle}
                         </div>
-                      )}
+                        {subTitle && (
+                          <div className="text-[11px] text-[#55695d] truncate mt-0.5 leading-normal">
+                            {subTitle}
+                          </div>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Proximity Pill Indicator (Closest to Farthest) */}
+                    {distFormatted && (
+                      <div className="flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-full bg-[#f0f4f1] border border-[#d6e2d9] text-[11px] font-bold text-[#244837]">
+                        <Navigation className="w-3 h-3 text-[#3a7d5c]" />
+                        <span>{distFormatted}</span>
+                      </div>
+                    )}
                   </li>
                 );
               })}

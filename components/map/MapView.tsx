@@ -1125,6 +1125,7 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
         <div className="flex items-center gap-2">
           <div className="flex-1 pointer-events-auto">
             <SearchBar
+              userCoords={userLoc}
               onLocationSelect={(lng, lat, displayName) => {
                 handleSearchLocationSelect(lng, lat, displayName);
               }}
