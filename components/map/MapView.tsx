@@ -108,7 +108,10 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
   const savedPlaceMarkers = useRef<maplibregl.Marker[]>([]);
   const watchIdRef = useRef<number | null>(null);
 
-  const [userLoc, setUserLoc] = useState<{ lng: number; lat: number } | null>(null);
+  const [userLoc, setUserLoc] = useState<{ lng: number; lat: number }>({
+    lng: initialUserCoords?.lng ?? 77.2167,
+    lat: initialUserCoords?.lat ?? 28.6315,
+  });
   const [selectedPinCoords, setSelectedPinCoords] = useState<{ lng: number; lat: number } | null>(null);
   const [gpsDebugMsg, setGpsDebugMsg] = useState<string | null>('Locating...');
   const [isActionPlacementMode, setIsActionPlacementMode] = useState(false);
@@ -355,44 +358,77 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
     }
   };
 
-  // Dedicated effect to maintain the user location marker on the map whenever userLoc or map updates
-  useEffect(() => {
-    const currentMap = map.current;
-    if (!currentMap || !userLoc) return;
+  // Helper function to create or update the user location blue pointer
+  const createOrUpdateUserMarker = useCallback((targetMap: maplibregl.Map, coords: { lng: number; lat: number }) => {
+    if (!targetMap) return;
 
     if (!userMarker.current) {
       const container = document.createElement('div');
-      container.className = 'relative flex items-center justify-center pointer-events-none z-30';
-      container.style.width = '40px';
-      container.style.height = '40px';
+      container.className = 'terra-pulse-user-marker';
+      container.style.position = 'relative';
+      container.style.width = '48px';
+      container.style.height = '48px';
+      container.style.display = 'flex';
+      container.style.alignItems = 'center';
+      container.style.justifyContent = 'center';
+      container.style.pointerEvents = 'none';
+      container.style.zIndex = '999';
 
       // Outer radar pulse
       const pulseRing = document.createElement('div');
-      pulseRing.className = 'absolute inset-0 rounded-full bg-blue-500/35 animate-ping';
+      pulseRing.className = 'animate-ping';
+      pulseRing.style.position = 'absolute';
+      pulseRing.style.inset = '0';
+      pulseRing.style.borderRadius = '50%';
+      pulseRing.style.backgroundColor = 'rgba(59, 130, 246, 0.45)';
       container.appendChild(pulseRing);
 
       // Middle halo
       const halo = document.createElement('div');
-      halo.className = 'absolute w-8 h-8 rounded-full bg-blue-500/20 border border-blue-400/50 shadow-sm';
+      halo.style.position = 'absolute';
+      halo.style.width = '34px';
+      halo.style.height = '34px';
+      halo.style.borderRadius = '50%';
+      halo.style.backgroundColor = 'rgba(59, 130, 246, 0.25)';
+      halo.style.border = '1.5px solid rgba(96, 165, 250, 0.7)';
       container.appendChild(halo);
 
-      // Directional pointer / blue dot
+      // Directional pointer / solid blue dot
       const centerDot = document.createElement('div');
-      centerDot.className = 'relative z-10 w-5 h-5 bg-blue-600 border-[2.5px] border-white rounded-full shadow-[0_0_16px_rgba(37,99,235,1)] flex items-center justify-center';
+      centerDot.style.position = 'relative';
+      centerDot.style.zIndex = '10';
+      centerDot.style.width = '20px';
+      centerDot.style.height = '20px';
+      centerDot.style.backgroundColor = '#2563eb';
+      centerDot.style.border = '3px solid #ffffff';
+      centerDot.style.borderRadius = '50%';
+      centerDot.style.boxShadow = '0 0 16px rgba(37, 99, 235, 1), 0 2px 6px rgba(0,0,0,0.3)';
+      centerDot.style.display = 'flex';
+      centerDot.style.alignItems = 'center';
+      centerDot.style.justifyContent = 'center';
       
       const innerCore = document.createElement('div');
-      innerCore.className = 'w-1.5 h-1.5 bg-white rounded-full';
+      innerCore.style.width = '6px';
+      innerCore.style.height = '6px';
+      innerCore.style.backgroundColor = '#ffffff';
+      innerCore.style.borderRadius = '50%';
       centerDot.appendChild(innerCore);
 
       container.appendChild(centerDot);
 
       userMarker.current = new maplibregl.Marker({ element: container, anchor: 'center' })
-        .setLngLat([userLoc.lng, userLoc.lat])
-        .addTo(currentMap);
+        .setLngLat([coords.lng, coords.lat])
+        .addTo(targetMap);
     } else {
-      userMarker.current.setLngLat([userLoc.lng, userLoc.lat]);
+      userMarker.current.setLngLat([coords.lng, coords.lat]);
     }
-  }, [userLoc]);
+  }, []);
+
+  // Dedicated effect to maintain the user location marker on the map whenever userLoc updates
+  useEffect(() => {
+    if (!map.current || !userLoc) return;
+    createOrUpdateUserMarker(map.current, userLoc);
+  }, [userLoc, createOrUpdateUserMarker]);
 
   // Robust GPS Requester with automatic IP Geolocation fallback
   const requestLocation = useCallback((isUserGesture = false, fly = true) => {
@@ -537,6 +573,9 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
     map.current = initializedMap;
 
     initializedMap.on('load', () => {
+      // Ensure user location blue pointer is mounted immediately
+      createOrUpdateUserMarker(initializedMap, userLoc);
+
       requestLocation(false, true);
 
       // ADD AQI HEATMAP LAYER (Hidden by default, toggleable via AQI pill)
@@ -646,10 +685,14 @@ export default function MapView({ targetLocation, initialShowAqiLayer, liveAqi, 
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
+      if (userMarker.current) {
+        userMarker.current.remove();
+        userMarker.current = null;
+      }
       map.current?.remove();
       map.current = null;
     };
-  }, [requestLocation, aqiData]);
+  }, []); // Run only once on mount
 
   // Synchronize Active Incident SVG Markers
   useEffect(() => {
